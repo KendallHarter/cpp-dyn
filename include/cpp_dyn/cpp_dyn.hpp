@@ -456,7 +456,7 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 } // namespace detail
 
 // TODO: Make data_ and funcs_ private but keep the rest public
-template<typename Trait, non_owning_dyn_options Opt>
+template<typename Trait, non_owning_dyn_options Opt = {}>
 struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
    non_owning_dyn_trait() = delete;
    non_owning_dyn_trait(const non_owning_dyn_trait&) = default;
@@ -495,7 +495,7 @@ private:
    };
 };
 
-template<typename Trait, owning_dyn_options Opt>
+template<typename Trait, owning_dyn_options Opt = {}>
 struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
    owning_dyn_trait() = delete;
    // Disallow copy/moving (for now?)
