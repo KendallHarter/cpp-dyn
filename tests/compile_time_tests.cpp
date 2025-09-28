@@ -72,4 +72,13 @@ consteval
    assert(khct::call(trait2, trait.volume, 1) == 4);
 }
 
-int main() {}
+int main()
+{
+   // // TODO: Move this to basic_tests.cpp
+   const auto trait = khct::owning_dyn<noise_trait>(cow{});
+   assert(khct::call(trait, trait.volume) == 1);
+
+   auto trait2 = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.stack_size = 8}>(dog{});
+   khct::call(trait2, trait2.get_louder);
+   assert(khct::call(trait2, trait2.volume) == 18);
+}
