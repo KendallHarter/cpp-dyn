@@ -74,7 +74,7 @@ consteval
 
 int main()
 {
-   // // TODO: Move this to basic_tests.cpp
+   // TODO: Move this to basic_tests.cpp
    const auto trait = khct::owning_dyn<noise_trait>(cow{});
    assert(khct::call(trait, trait.volume) == 1);
 
