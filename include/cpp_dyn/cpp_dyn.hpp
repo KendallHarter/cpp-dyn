@@ -122,6 +122,7 @@ constexpr auto get_vtable(auto* c) noexcept -> auto&
    }
 }
 
+// This specialization is used for single functions (non-overloaded)
 template<typename TraitClass, std::size_t FuncIndex, bool IsOwning>
 struct func_caller<TraitClass, FuncIndex, IsOwning> {
    template<typename Trait, non_owning_dyn_options Opt>
@@ -163,6 +164,7 @@ struct func_caller_helper<Index, RetType (*)(Args...) noexcept> {
    static consteval auto operator()(Args...) noexcept -> std::integral_constant<std::size_t, Index>;
 };
 
+// This specialization is used for overload sets with the specified name
 template<typename TraitClass, std::size_t StartIndex, const char* Name, bool IsOwning>
 struct func_caller<TraitClass, StartIndex, Name, IsOwning> {
    template<typename Trait, non_owning_dyn_options Opt>
@@ -442,7 +444,8 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 
 // TODO: Make data_ and funcs_ private but keep the rest public
 template<typename Trait, non_owning_dyn_options Opt = {}>
-struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
+struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
+   : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 
