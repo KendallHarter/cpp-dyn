@@ -28,6 +28,12 @@ struct owning_dyn_options {
    std::size_t stack_size = 0;
 };
 
+template<typename Trait, non_owning_dyn_options Opt>
+struct non_owning_dyn_trait;
+
+template<typename Trait, owning_dyn_options Opt>
+struct owning_dyn_trait;
+
 namespace detail {
 
 template<std::meta::info... Info>
@@ -117,8 +123,15 @@ static constexpr auto get_vtable
 
 template<typename TraitClass, std::size_t FuncIndex, bool IsOwning>
 struct func_caller<TraitClass, FuncIndex, IsOwning> {
+   template<typename Trait, non_owning_dyn_options Opt>
+   friend struct ::khct::non_owning_dyn_trait;
+
+   template<typename Trait, owning_dyn_options Opt>
+   friend struct ::khct::owning_dyn_trait;
+
+private:
    template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto operator()(const void* c, Args&&... args) noexcept(
+   static constexpr auto call(const void* c, Args&&... args) noexcept(
       noexcept(get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
          static_cast<const Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
@@ -128,9 +141,9 @@ struct func_caller<TraitClass, FuncIndex, IsOwning> {
    }
 
    template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto operator()(void* c, Args&&... args) noexcept(
-      noexcept(get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
-         static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
+   static constexpr auto
+      call(void* c, Args&&... args) noexcept(noexcept(get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(
+         c)(static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
       auto* const ptr = static_cast<Class*>(c);
       return get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
@@ -153,6 +166,13 @@ struct func_caller_helper<Index, RetType (*)(Args...) noexcept> {
 
 template<typename TraitClass, std::size_t StartIndex, const char* Name, bool IsOwning>
 struct func_caller<TraitClass, StartIndex, Name, IsOwning> {
+   template<typename Trait, non_owning_dyn_options Opt>
+   friend struct ::khct::non_owning_dyn_trait;
+
+   template<typename Trait, owning_dyn_options Opt>
+   friend struct ::khct::owning_dyn_trait;
+
+private:
    static constexpr std::span<const std::meta::info> funcs = []() consteval -> std::span<const std::meta::info> {
       static constexpr auto funcs = std::define_static_array(get_sorted_funcs_by_name(^^TraitClass));
       const auto sorted_funcs = partition_sorted_funcs_by_name(funcs);
@@ -177,7 +197,7 @@ struct func_caller<TraitClass, StartIndex, Name, IsOwning> {
    }();
 
    template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto operator()(const void* c, Args&&... args) noexcept(
+   static constexpr auto call(const void* c, Args&&... args) noexcept(
       noexcept(get_vtable.operator()<
                InlineVtable,
                Class,
@@ -193,7 +213,7 @@ struct func_caller<TraitClass, StartIndex, Name, IsOwning> {
    }
 
    template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto operator()(void* c, Args&&... args) noexcept(noexcept(
+   static constexpr auto call(void* c, Args&&... args) noexcept(noexcept(
       get_vtable.
       operator()<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
          static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
@@ -458,6 +478,9 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 // TODO: Make data_ and funcs_ private but keep the rest public
 template<typename Trait, non_owning_dyn_options Opt = {}>
 struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
+   template<typename TraitClass, auto... Rest>
+   friend struct detail::func_caller;
+
    non_owning_dyn_trait() = delete;
    non_owning_dyn_trait(const non_owning_dyn_trait&) = default;
    non_owning_dyn_trait(non_owning_dyn_trait&&) = default;
@@ -474,14 +497,39 @@ struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_co
    constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : base{.data_ = ptr, .funcs_ = gen_funcs<ToStore>()}
    {}
 
-   constexpr auto data() noexcept
-      -> void* requires(!Opt.is_const) { return this->data_; } constexpr auto data() const noexcept -> const void*
+   template<auto... FuncCallerRest, typename... T>
+   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) noexcept(
+      noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...))) -> decltype(auto)
    {
-      return this->data_;
+      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...);
+   }
+
+   template<auto... FuncCallerRest, typename... T>
+   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) const
+      noexcept(noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...))) -> decltype(auto)
+   {
+      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...);
    }
 
 private:
    using base = detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline>;
+
+   // clang-format off
+   constexpr auto data() noexcept -> void*
+      requires(!Opt.is_const)
+   {
+      return this->data_;
+   }
+
+   constexpr auto data() const noexcept -> const void*
+   {
+      return this->data_;
+   }
+   // clang-format on
 
    template<typename ToStore>
    static constexpr auto gen_funcs() noexcept
@@ -497,6 +545,9 @@ private:
 
 template<typename Trait, owning_dyn_options Opt = {}>
 struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
+   template<typename TraitClass, auto... Rest>
+   friend struct detail::func_caller;
+
    owning_dyn_trait() = delete;
    // Disallow copy/moving (for now?)
    owning_dyn_trait(const owning_dyn_trait&) = delete;
@@ -524,6 +575,27 @@ struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
       }
    }
 
+   template<auto... FuncCallerRest, typename... T>
+   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) noexcept(
+      noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...))) -> decltype(auto)
+   {
+      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...);
+   }
+
+   template<auto... FuncCallerRest, typename... T>
+   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) const
+      noexcept(noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...))) -> decltype(auto)
+   {
+      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+         this, std::forward<T>(args)...);
+   }
+
+private:
+   using base = detail::owning_dyn_trait_impl<Trait, Opt>;
+
    constexpr auto data() noexcept -> void*
    {
       if constexpr (Opt.stack_size > 0) {
@@ -543,9 +615,6 @@ struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
          return this->data_.get();
       }
    }
-
-private:
-   using base = detail::owning_dyn_trait_impl<Trait, Opt>;
 
    template<typename ToStore>
    static constexpr auto gen_data() noexcept
@@ -596,35 +665,26 @@ template<typename Trait, non_owning_dyn_options Opt, auto... FuncCallerRest, typ
 constexpr auto call(
    non_owning_dyn_trait<Trait, Opt> self,
    detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(to_call
-                                     .template operator()<Opt.store_vtable_inline, non_owning_dyn_trait<Trait, Opt>>(
-                                        &self, std::forward<T>(args)...)))
+   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
 {
-   return to_call.template operator()<Opt.store_vtable_inline, non_owning_dyn_trait<Trait, Opt>>(
-      &self, std::forward<T>(args)...);
+   return self.call(to_call, std::forward<T>(args)...);
 }
 
 template<typename Trait, owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
 constexpr auto call(
    owning_dyn_trait<Trait, Opt>& self,
    detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(to_call
-                                     .template operator()<Opt.store_vtable_inline, owning_dyn_trait<Trait, Opt>>(
-                                        &self, std::forward<T>(args)...)))
+   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
 {
-   return to_call.template operator()<Opt.store_vtable_inline, owning_dyn_trait<Trait, Opt>>(
-      &self, std::forward<T>(args)...);
+   return self.call(to_call, std::forward<T>(args)...);
 }
 template<typename Trait, owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
 constexpr auto call(
    const owning_dyn_trait<Trait, Opt>& self,
    detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(to_call
-                                     .template operator()<Opt.store_vtable_inline, owning_dyn_trait<Trait, Opt>>(
-                                        &self, std::forward<T>(args)...)))
+   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
 {
-   return to_call.template operator()<Opt.store_vtable_inline, owning_dyn_trait<Trait, Opt>>(
-      &self, std::forward<T>(args)...);
+   return self.call(to_call, std::forward<T>(args)...);
 }
 
 } // namespace khct
