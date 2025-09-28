@@ -45,14 +45,20 @@ struct dog {
 static constexpr cow c{};
 static constexpr dog d{};
 
-static constexpr auto owner2 = khct::dyn<noise_trait>(&c);
-static_assert(khct::call(owner2, owner2.get_noise) == "moo");
-static_assert(noexcept(khct::call(owner2, owner2.get_noise)));
+static constexpr auto owner = khct::dyn<noise_trait>(&c);
+static_assert(khct::call(owner, owner.get_noise) == "moo");
+static_assert(noexcept(khct::call(owner, owner.get_noise)));
 
-static constexpr auto owner3 = khct::dyn<noise_trait>(&d);
-static_assert(khct::call(owner3, owner3.volume) == 9);
-static_assert(khct::call(owner3, owner3.volume, 2) == 18);
-static_assert(khct::call(owner3, owner3.get_secondary_noise) == "bark");
+// One pointer to the vtable, one pointer to data
+static_assert(sizeof(owner) <= sizeof(void*) * 2);
+
+static constexpr auto owner2 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&d);
+static_assert(khct::call(owner2, owner2.volume) == 9);
+static_assert(khct::call(owner2, owner2.volume, 2) == 18);
+static_assert(khct::call(owner2, owner2.get_secondary_noise) == "bark");
+
+// One pointer to the data, 6 pointers to methods
+static_assert(sizeof(owner2) == sizeof(void*) + sizeof(void*) * 6);
 
 consteval
 {

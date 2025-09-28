@@ -88,46 +88,58 @@ consteval auto partition_sorted_funcs_by_name(const std::span<const std::meta::i
 
 // We don't need TraitClass, but have it to prevent passing other dyn_trait functions
 template<typename TraitClass, auto... Rest>
-struct func_caller;
+struct non_owning_func_caller;
+
+static constexpr auto non_owning_get_vtable
+   = []<bool InlineVtable, typename Class, std::size_t I>(auto* c) consteval noexcept -> auto& {
+   static constexpr bool is_const = std::is_const_v<std::remove_pointer_t<decltype(c)>>;
+   using cast_type = std::conditional_t<is_const, const Class*, Class*>;
+   if constexpr (InlineVtable) {
+      return static_cast<cast_type>(c)->funcs_.template get<I>();
+   }
+   else {
+      return static_cast<cast_type>(c)->funcs_->template get<I>();
+   }
+};
 
 template<typename TraitClass, std::size_t FuncIndex>
-struct func_caller<TraitClass, FuncIndex> {
-   template<typename Class, typename... Args>
+struct non_owning_func_caller<TraitClass, FuncIndex> {
+   template<bool InlineVtable, typename Class, typename... Args>
    static constexpr auto operator()(const void* c, Args&&... args) noexcept(
-      noexcept((static_cast<const Class*>(c)->funcs_->template get<FuncIndex>())(
+      noexcept(non_owning_get_vtable.operator()<InlineVtable, Class, FuncIndex>(c)(
          static_cast<const Class*>(c)->data_, std::forward<Args>(args)...))) -> decltype(auto)
    {
       const auto* const ptr = static_cast<const Class*>(c);
-      return (ptr->funcs_->template get<FuncIndex>())(ptr->data_, std::forward<Args>(args)...);
+      return non_owning_get_vtable.operator()<InlineVtable, Class, FuncIndex>(c)(
+         ptr->data_, std::forward<Args>(args)...);
    }
 
-   template<typename Class, typename... Args>
-   static constexpr auto
-      operator()(void* c, Args&&... args) noexcept(noexcept((static_cast<Class*>(c)->funcs_->template get<FuncIndex>())(
+   template<bool InlineVtable, typename Class, typename... Args>
+   static constexpr auto operator()(void* c, Args&&... args) noexcept(
+      noexcept(non_owning_get_vtable.operator()<InlineVtable, Class, FuncIndex>(c)(
          static_cast<Class*>(c)->data_, std::forward<Args>(args)...))) -> decltype(auto)
    {
       auto* const ptr = static_cast<Class*>(c);
-      return (ptr->funcs_->template get<FuncIndex>())(ptr->data_, std::forward<Args>(args)...);
+      return non_owning_get_vtable.operator()<InlineVtable, Class, FuncIndex>(c)(
+         ptr->data_, std::forward<Args>(args)...);
    }
 };
 
 template<std::size_t Index, typename FuncType>
-struct func_caller_helper;
+struct non_owning_func_caller_helper;
 
 template<std::size_t Index, typename RetType, typename... Args>
-struct func_caller_helper<Index, RetType (*)(Args...)> {
+struct non_owning_func_caller_helper<Index, RetType (*)(Args...)> {
    static consteval auto operator()(Args...) noexcept -> std::integral_constant<std::size_t, Index>;
 };
 
 template<std::size_t Index, typename RetType, typename... Args>
-struct func_caller_helper<Index, RetType (*)(Args...) noexcept> {
+struct non_owning_func_caller_helper<Index, RetType (*)(Args...) noexcept> {
    static consteval auto operator()(Args...) noexcept -> std::integral_constant<std::size_t, Index>;
 };
 
-// trying to do this with a fixed_string resulted in it using the primary template for some reason
-// const char* seems to work and since this is internally used only it doesn't really matter
 template<typename TraitClass, std::size_t StartIndex, const char* Name>
-struct func_caller<TraitClass, StartIndex, Name> {
+struct non_owning_func_caller<TraitClass, StartIndex, Name> {
    static constexpr std::span<const std::meta::info> funcs = []() consteval -> std::span<const std::meta::info> {
       static constexpr auto funcs = std::define_static_array(get_sorted_funcs_by_name(^^TraitClass));
       const auto sorted_funcs = partition_sorted_funcs_by_name(funcs);
@@ -145,35 +157,39 @@ struct func_caller<TraitClass, StartIndex, Name> {
 
    static constexpr auto get_indexer = []() consteval {
       return []<std::size_t... I>(std::index_sequence<I...>) {
-         return ::khct::detail::overload_set{func_caller_helper<
+         return ::khct::detail::overload_set{non_owning_func_caller_helper<
             StartIndex + I,
             typename[:member_func_to_non_member_func(funcs[I], ^^TraitClass):]>{}...};
       }(std::make_index_sequence<funcs.size()>{});
    }();
 
-   template<typename Class, typename... Args>
-   static constexpr decltype(auto) operator()(const void* c, Args&&... args) noexcept(noexcept((
-      static_cast<const Class*>(c)
-         ->funcs_->template get<decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>())(
-      static_cast<const Class*>(c)->data_, std::forward<Args>(args)...)))
+   template<bool InlineVtable, typename Class, typename... Args>
+   static constexpr decltype(auto) operator()(const void* c, Args&&... args) noexcept(
+      noexcept(non_owning_get_vtable.operator()<
+               InlineVtable,
+               Class,
+               decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
+         static_cast<const Class*>(c)->data_, std::forward<Args>(args)...)))
    {
       const auto* const ptr = static_cast<const Class*>(c);
-      return (ptr->funcs_
-                 ->template get<decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>())(
+      return non_owning_get_vtable.operator()<
+         InlineVtable,
+         Class,
+         decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
          ptr->data_, std::forward<Args>(args)...);
    }
 
-   template<typename Class, typename... Args>
-   static constexpr decltype(auto) operator()(void* c, Args&&... args) noexcept(noexcept((
-      static_cast<Class*>(c)
-         ->funcs_->template get<decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>())(
-      static_cast<Class*>(c)->data_, std::forward<Args>(args)...)))
+   template<bool InlineVtable, typename Class, typename... Args>
+   static constexpr decltype(auto) operator()(void* c, Args&&... args) noexcept(noexcept(
+      non_owning_get_vtable.
+      operator()<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
+         static_cast<Class*>(c)->data_, std::forward<Args>(args)...)))
    {
       auto* const ptr = static_cast<Class*>(c);
 
-      return (ptr->funcs_
-                 ->template get<decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>())(
-         ptr->data_, std::forward<Args>(args)...);
+      return non_owning_get_vtable.
+         operator()<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(
+            c)(ptr->data_, std::forward<Args>(args)...);
    }
 };
 
@@ -197,7 +213,7 @@ consteval auto get_members_and_tuple_type(std::meta::info trait)
          members.push_back(
             std::meta::reflect_constant(
                std::meta::data_member_spec(
-                  std::meta::substitute(^^func_caller, {trait, std::meta::reflect_constant(index)}),
+                  std::meta::substitute(^^non_owning_func_caller, {trait, std::meta::reflect_constant(index)}),
                   {.name = std::meta::identifier_of(f), .no_unique_address = true})));
          index += 1;
          func_ptrs.push_back(member_func_to_non_member_func(f, trait));
@@ -217,7 +233,7 @@ consteval auto get_members_and_tuple_type(std::meta::info trait)
             std::meta::reflect_constant(
                std::meta::data_member_spec(
                   std::meta::substitute(
-                     ^^func_caller,
+                     ^^non_owning_func_caller,
                      {trait,
                       std::meta::reflect_constant(index),
                       std::meta::reflect_constant_string(std::meta::identifier_of(funcs.front()))}),
@@ -228,15 +244,19 @@ consteval auto get_members_and_tuple_type(std::meta::info trait)
    return {members, func_ptrs};
 }
 
-consteval std::meta::info make_non_owning_dyn_trait(std::meta::info trait, bool is_const) noexcept
+consteval std::meta::info
+   make_non_owning_dyn_trait(std::meta::info trait, bool is_const, bool store_vtable_inline) noexcept
 {
    auto [members, func_ptrs] = get_members_and_tuple_type(trait);
    members.push_back(
       std::meta::reflect_constant(std::meta::data_member_spec(is_const ? ^^const void* : ^^void*, {.name = "data_"})));
+
+   const auto tuple_func_ptrs = std::meta::substitute(^^detail::tuple, func_ptrs);
+
    members.push_back(
       std::meta::reflect_constant(
          std::meta::data_member_spec(
-            std::meta::add_pointer(std::meta::add_const(std::meta::substitute(^^detail::tuple, func_ptrs))),
+            store_vtable_inline ? tuple_func_ptrs : std::meta::add_pointer(std::meta::add_const(tuple_func_ptrs)),
             {.name = "funcs_"})));
    return std::meta::substitute(^^cls, members);
 }
@@ -363,37 +383,55 @@ consteval auto make_dyn_trait_pointers()
    }.template operator()(std::make_index_sequence<trait_funcs.size()>{});
 }
 
-template<typename Trait, bool IsConst>
-using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait, IsConst):];
+template<typename Trait, bool IsConst, bool StoreVtableInline>
+using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait, IsConst, StoreVtableInline):];
 
 } // namespace detail
 
-// Something about the previous type alias inhibits argument deduction, so do this instead
-template<typename Trait, bool IsConst>
-struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, IsConst> {};
+struct non_owning_dyn_options {
+   bool store_vtable_inline = false;
+};
 
-template<typename DynTrait, typename ToStore>
+struct owning_dyn_options {
+   bool store_vtable_inline = false;
+   /// @brief The maximum number of bytes to allocate for local storage
+   std::size_t max_no_alloc_size = 0;
+};
+
+// Something about the previous type alias inhibits argument deduction, so do this instead
+template<typename Trait, bool IsConst, bool StoreVtableInline>
+struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, IsConst, StoreVtableInline> {};
+
+template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
 constexpr auto dyn(const ToStore* ptr) noexcept
 {
-   return non_owning_dyn_trait<DynTrait, true>{
-      {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
+   if constexpr (Opt.store_vtable_inline) {
+      return non_owning_dyn_trait<DynTrait, true, Opt.store_vtable_inline>{
+         {.data_ = ptr, .funcs_ = detail::make_dyn_trait_pointers<DynTrait, ToStore>()}};
+   }
+   else {
+      return non_owning_dyn_trait<DynTrait, true, Opt.store_vtable_inline>{
+         {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
+   }
 }
 
-template<typename DynTrait, typename ToStore>
+template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
 constexpr auto dyn(ToStore* ptr) noexcept
 {
-   return non_owning_dyn_trait<DynTrait, false>{
+   return non_owning_dyn_trait<DynTrait, false, Opt.store_vtable_inline>{
       {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
 }
 
-template<typename Trait, bool ConstSelf, auto... FuncCallerRest, typename... T>
+template<typename Trait, bool ConstSelf, bool InlineVtable, auto... FuncCallerRest, typename... T>
 constexpr auto call(
-   non_owning_dyn_trait<Trait, ConstSelf> self,
-   detail::func_caller<Trait, FuncCallerRest...> to_call,
+   non_owning_dyn_trait<Trait, ConstSelf, InlineVtable> self,
+   detail::non_owning_func_caller<Trait, FuncCallerRest...> to_call,
    T&&... args) noexcept(noexcept(to_call.template
-                                  operator()<non_owning_dyn_trait<Trait, ConstSelf>>(&self, std::forward<T>(args)...)))
+                                  operator()<InlineVtable, non_owning_dyn_trait<Trait, ConstSelf, InlineVtable>>(
+                                     &self, std::forward<T>(args)...)))
 {
-   return to_call.template operator()<non_owning_dyn_trait<Trait, ConstSelf>>(&self, std::forward<T>(args)...);
+   return to_call.template operator()<InlineVtable, non_owning_dyn_trait<Trait, ConstSelf, InlineVtable>>(
+      &self, std::forward<T>(args)...);
 }
 
 } // namespace khct
