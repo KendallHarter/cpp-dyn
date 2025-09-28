@@ -12,4 +12,14 @@ TEST_CASE("Basic functionality", "[basic]")
    khct::call(trait2, trait2.get_louder);
    auto trait3 = std::move(trait2);
    REQUIRE(khct::call(trait3, trait3.volume) == 18);
+
+   cow cow2{};
+   const auto trait4 = khct::dyn<noise_trait>(&cow2);
+   const auto trait5
+      = khct::dyn<noise_trait, khct::non_owning_dyn_options{.is_const = false, .store_vtable_inline = true}>(&cow2);
+   khct::call(trait4, trait4.get_louder);
+   REQUIRE(khct::call(trait4, trait4.volume, 1) == 2);
+   REQUIRE(khct::call(trait5, trait5.get_secondary_noise) == "(none)");
+   khct::call(trait5, trait5.get_louder_twice);
+   REQUIRE(khct::call(trait5, trait5.volume, 1) == 4);
 }
