@@ -13,17 +13,6 @@ struct pair {
    friend constexpr auto operator<=>(const pair&, const pair&) noexcept = default;
 };
 
-template<std::size_t I, auto First, auto... Rest>
-consteval auto get_at_index() noexcept
-{
-   if constexpr (I == 0) {
-      return First;
-   }
-   else {
-      return get_at_index<I - 1, Rest...>();
-   }
-}
-
 template<typename T>
 struct type_holder {
    using type = T;
@@ -45,14 +34,14 @@ struct tuple_impl : tuple_base<typename decltype(TypesAndIndexes.first)::type, T
    template<std::size_t I>
    constexpr const auto& get() const& noexcept
    {
-      constexpr auto use_pair = get_at_index<I, TypesAndIndexes...>();
+      constexpr auto use_pair = TypesAndIndexes...[I];
       return static_cast<const tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
    }
 
    template<std::size_t I>
    constexpr auto& get() & noexcept
    {
-      constexpr auto use_pair = get_at_index<I, TypesAndIndexes...>();
+      constexpr auto use_pair = TypesAndIndexes...[I];
       return static_cast<tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
    }
 
