@@ -74,6 +74,17 @@ struct tuple : std::remove_reference_t<decltype(*make_tuple<Ts...>(std::index_se
    inline static constexpr auto size = sizeof...(Ts);
 };
 
+template<typename Tuple1, typename Tuple2>
+struct append_tuple_types;
+
+template<typename... Ts1, typename... Ts2>
+struct append_tuple_types<tuple<Ts1...>, tuple<Ts2...>> {
+   using type = tuple<Ts1..., Ts2...>;
+};
+
+template<typename Tuple1, typename Tuple2>
+using append_tuple_types_t = append_tuple_types<Tuple1, Tuple2>::type;
+
 } // namespace khct::detail
 
 #endif // CPP_DYN_TUPLE_HPP

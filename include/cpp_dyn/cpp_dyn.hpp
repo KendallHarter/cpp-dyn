@@ -109,8 +109,9 @@ consteval auto partition_sorted_funcs_by_name(const std::span<const std::meta::i
 template<typename TraitClass, auto... Rest>
 struct func_caller;
 
-static constexpr auto get_vtable
-   = []<bool InlineVtable, typename Class, std::size_t I>(auto* c) constexpr noexcept -> auto& {
+template<bool InlineVtable, typename Class, std::size_t I>
+constexpr auto get_vtable(auto* c) noexcept -> auto&
+{
    static constexpr bool is_const = std::is_const_v<std::remove_pointer_t<decltype(c)>>;
    using cast_type = std::conditional_t<is_const, const Class*, Class*>;
    if constexpr (InlineVtable) {
@@ -119,7 +120,7 @@ static constexpr auto get_vtable
    else {
       return static_cast<cast_type>(c)->funcs_->template get<I>();
    }
-};
+}
 
 template<typename TraitClass, std::size_t FuncIndex, bool IsOwning>
 struct func_caller<TraitClass, FuncIndex, IsOwning> {
@@ -131,23 +132,21 @@ struct func_caller<TraitClass, FuncIndex, IsOwning> {
 
 private:
    template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto call(const void* c, Args&&... args) noexcept(
-      noexcept(get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
+   static constexpr auto
+      call(const void* c, Args&&... args) noexcept(noexcept(get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(
          static_cast<const Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
       const auto* const ptr = static_cast<const Class*>(c);
-      return get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
-         ptr->data(), std::forward<Args>(args)...);
+      return get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(ptr->data(), std::forward<Args>(args)...);
    }
 
    template<bool InlineVtable, typename Class, typename... Args>
    static constexpr auto
-      call(void* c, Args&&... args) noexcept(noexcept(get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(
-         c)(static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
+      call(void* c, Args&&... args) noexcept(noexcept(get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(
+         static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
       auto* const ptr = static_cast<Class*>(c);
-      return get_vtable.operator()<InlineVtable, Class, FuncIndex + IsOwning>(c)(
-         ptr->data(), std::forward<Args>(args)...);
+      return get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(ptr->data(), std::forward<Args>(args)...);
    }
 };
 
@@ -198,14 +197,14 @@ private:
 
    template<bool InlineVtable, typename Class, typename... Args>
    static constexpr auto call(const void* c, Args&&... args) noexcept(
-      noexcept(get_vtable.operator()<
+      noexcept(get_vtable<
                InlineVtable,
                Class,
                decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
          static_cast<const Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
       const auto* const ptr = static_cast<const Class*>(c);
-      return get_vtable.operator()<
+      return get_vtable<
          InlineVtable,
          Class,
          decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
@@ -214,15 +213,16 @@ private:
 
    template<bool InlineVtable, typename Class, typename... Args>
    static constexpr auto call(void* c, Args&&... args) noexcept(noexcept(
-      get_vtable.
-      operator()<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
+      get_vtable<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
          static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
    {
       auto* const ptr = static_cast<Class*>(c);
 
-      return get_vtable.
-         operator()<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(
-            c)(ptr->data(), std::forward<Args>(args)...);
+      return get_vtable<
+         InlineVtable,
+         Class,
+         decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
+         ptr->data(), std::forward<Args>(args)...);
    }
 };
 
@@ -282,48 +282,13 @@ consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
 consteval auto make_non_owning_dyn_trait(std::meta::info trait, bool is_const, bool store_vtable_inline) noexcept
    -> std::meta::info
 {
-   auto [members, func_ptrs] = get_members_and_tuple_type(trait, false);
-   members.push_back(
-      std::meta::reflect_constant(std::meta::data_member_spec(is_const ? ^^const void* : ^^void*, {.name = "data_"})));
-
-   const auto tuple_func_ptrs = std::meta::substitute(^^detail::tuple, func_ptrs);
-
-   members.push_back(
-      std::meta::reflect_constant(
-         std::meta::data_member_spec(
-            store_vtable_inline ? tuple_func_ptrs : std::meta::add_pointer(std::meta::add_const(tuple_func_ptrs)),
-            {.name = "funcs_"})));
-   return std::meta::substitute(^^cls, members);
+   return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, false).first);
 }
 
 template<owning_dyn_options Opt>
 consteval auto make_owning_dyn_trait(std::meta::info trait) -> std::meta::info
 {
-   auto [members, func_ptrs] = get_members_and_tuple_type(trait, true);
-
-   if (Opt.stack_size > 0) {
-      members.push_back(
-         std::meta::reflect_constant(
-            std::meta::data_member_spec(^^std::array<unsigned char, Opt.stack_size>, {.name = "data_"})));
-   }
-   else {
-      // TODO: When non-trivial unions are a thing, use a union instead
-      members.push_back(
-         std::meta::reflect_constant(
-            std::meta::data_member_spec(^^std::unique_ptr<unsigned char[]>, {.name = "data_"})));
-   }
-
-   // Need an extra delete pointer
-   func_ptrs.insert(func_ptrs.begin(), ^^void (*)(void*) noexcept);
-
-   const auto tuple_func_ptrs = std::meta::substitute(^^detail::tuple, func_ptrs);
-
-   members.push_back(
-      std::meta::reflect_constant(
-         std::meta::data_member_spec(
-            Opt.store_vtable_inline ? tuple_func_ptrs : std::meta::add_pointer(std::meta::add_const(tuple_func_ptrs)),
-            {.name = "funcs_"})));
-   return std::meta::substitute(^^cls, members);
+   return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, true).first);
 }
 
 template<std::meta::info F, typename Ptr, typename Class, typename... Args>
@@ -481,6 +446,9 @@ struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_co
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 
+   template<bool InlineVtable, typename Class, std::size_t I>
+   friend constexpr auto detail::get_vtable(auto* c) noexcept -> auto&;
+
    non_owning_dyn_trait() = delete;
    non_owning_dyn_trait(const non_owning_dyn_trait&) = default;
    non_owning_dyn_trait(non_owning_dyn_trait&&) = default;
@@ -489,12 +457,12 @@ struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_co
 
    template<typename ToStore>
       requires(Opt.is_const)
-   constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : base{.data_ = ptr, .funcs_ = gen_funcs<ToStore>()}
+   constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
    template<typename ToStore>
       requires(!Opt.is_const)
-   constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : base{.data_ = ptr, .funcs_ = gen_funcs<ToStore>()}
+   constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
    template<auto... FuncCallerRest, typename... T>
@@ -517,6 +485,13 @@ struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, Opt.is_co
 
 private:
    using base = detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline>;
+
+   using tuple_func_ptrs
+      = [:std::meta::substitute(^^detail::tuple, detail::get_members_and_tuple_type(^^Trait, false).second):];
+
+   std::conditional_t<Opt.is_const, const void*, void*> data_;
+   std::conditional_t<Opt.store_vtable_inline, tuple_func_ptrs, std::add_pointer_t<std::add_const_t<tuple_func_ptrs>>>
+      funcs_;
 
    // clang-format off
    constexpr auto data() noexcept -> void*
@@ -544,12 +519,14 @@ private:
 };
 
 // This is marked final because of the way storage is done
-// TODO: Remove final once trivial unions are a thing
 template<typename Trait, owning_dyn_options Opt = {}>
 struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible final
    : detail::owning_dyn_trait_impl<Trait, Opt> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
+
+   template<bool InlineVtable, typename Class, std::size_t I>
+   friend constexpr auto detail::get_vtable(auto* c) noexcept -> auto&;
 
    owning_dyn_trait() = delete;
    // Disallow copying (for now?)
@@ -577,7 +554,7 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
       requires(sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
    constexpr owning_dyn_trait(ToStore&& obj) noexcept(
       Opt.stack_size == 0 && noexcept(new (data()) ToStore{std::forward<ToStore>(obj)}))
-      : base{.data_ = gen_data<ToStore>(), .funcs_ = gen_funcs<ToStore>()}
+      : data_{gen_data<ToStore>()}, funcs_{gen_funcs<ToStore>()}
    {
       new (data()) ToStore{std::forward<ToStore>(obj)};
    }
@@ -614,6 +591,14 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
 
 private:
    using base = detail::owning_dyn_trait_impl<Trait, Opt>;
+   using tuple_func_ptrs = detail::append_tuple_types_t<
+      detail::tuple<void (*)(void*) noexcept>,
+      typename[:std::meta::substitute(^^detail::tuple, detail::get_members_and_tuple_type(^^Trait, true).second):]>;
+
+   std::conditional_t<(Opt.stack_size > 0), std::array<unsigned char, Opt.stack_size>, std::unique_ptr<unsigned char[]>>
+      data_;
+   std::conditional_t<Opt.store_vtable_inline, tuple_func_ptrs, std::add_pointer_t<std::add_const_t<tuple_func_ptrs>>>
+      funcs_;
 
    constexpr auto data() noexcept -> void*
    {
