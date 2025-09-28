@@ -278,7 +278,7 @@ constexpr auto produce_default_static_func_ptr
    = +[](const void*, Args... args) noexcept(noexcept([:F:](args...))) -> decltype(auto) { return [:F:](args...); };
 
 template<typename Trait, typename ToStore>
-consteval auto make_dyn_trait_pointers()
+constexpr auto make_dyn_trait_pointers()
 {
    static constexpr auto func_ptrs = std::define_static_array(get_members_and_tuple_type(^^Trait).second);
    static constexpr auto trait_funcs = std::define_static_array(get_sorted_funcs_by_name(^^Trait));
@@ -418,8 +418,14 @@ constexpr auto dyn(const ToStore* ptr) noexcept
 template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
 constexpr auto dyn(ToStore* ptr) noexcept
 {
-   return non_owning_dyn_trait<DynTrait, false, Opt.store_vtable_inline>{
-      {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
+   if constexpr (Opt.store_vtable_inline) {
+      return non_owning_dyn_trait<DynTrait, true, Opt.store_vtable_inline>{
+         {.data_ = ptr, .funcs_ = detail::make_dyn_trait_pointers<DynTrait, ToStore>()}};
+   }
+   else {
+      return non_owning_dyn_trait<DynTrait, false, Opt.store_vtable_inline>{
+         {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
+   }
 }
 
 template<typename Trait, bool ConstSelf, bool InlineVtable, auto... FuncCallerRest, typename... T>

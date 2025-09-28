@@ -64,11 +64,12 @@ consteval
 {
    cow cow2{};
    const auto trait = khct::dyn<noise_trait>(&cow2);
+   const auto trait2 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&cow2);
    khct::call(trait, trait.get_louder);
    assert(khct::call(trait, trait.volume, 1) == 2);
-   assert(khct::call(trait, trait.get_secondary_noise) == "(none)");
+   assert(khct::call(trait2, trait.get_secondary_noise) == "(none)");
    khct::call(trait, trait.get_louder_twice);
-   assert(khct::call(trait, trait.volume, 1) == 4);
+   assert(khct::call(trait2, trait.volume, 1) == 4);
 }
 
 int main() {}
