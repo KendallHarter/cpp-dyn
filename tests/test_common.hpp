@@ -3,7 +3,7 @@
 
 #include <string_view>
 
-struct noise_trait {
+struct[[= khct::auto_trait]] noise_trait {
    static std::string_view get_noise() noexcept;
 
    [[= khct::default_impl]] static constexpr std::string_view get_secondary_noise() noexcept { return "(none)"; }

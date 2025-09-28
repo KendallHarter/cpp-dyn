@@ -24,12 +24,12 @@ TEST_CASE("Basic functionality", "[basic]")
    REQUIRE(khct::call(trait5, trait5.volume, 1) == 4);
 }
 
-struct my_interface {
+struct[[= khct::trait]] my_interface {
    int get_data() const noexcept;
    void set_data(int);
 };
 
-struct my_struct {
+struct[[= khct::impl_for<my_interface>]] my_struct {
    int get_data() const noexcept { return data_; }
    void set_data(int new_data) noexcept { data_ = new_data; }
 

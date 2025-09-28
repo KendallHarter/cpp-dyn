@@ -13,8 +13,24 @@
 
 namespace khct {
 
-constexpr struct {
+inline constexpr struct {
 } default_impl;
+
+inline constexpr struct {
+} trait;
+
+inline constexpr struct {
+} auto_trait;
+
+namespace detail {
+
+template<typename T>
+struct impl_for_struct {};
+
+} // namespace detail
+
+template<typename T>
+inline constexpr auto impl_for = detail::impl_for_struct<T>{};
 
 struct non_owning_dyn_options {
    bool store_vtable_inline = false;
@@ -35,14 +51,21 @@ struct owning_dyn_trait;
 
 namespace detail {
 
-template<std::meta::info... Info>
+template<typename T>
+concept is_auto_trait = !annotations_of_with_type(^^T, ^^decltype(auto_trait)).empty();
+
+template<typename Trait, typename Type>
+concept is_trait_impl_for = !annotations_of_with_type(^^Trait, ^^decltype(trait)).empty()
+                         && !annotations_of_with_type(^^Type, ^^detail::impl_for_struct<Trait>).empty();
+
+template<std::meta::info... Infos>
 struct outer {
    struct inner;
-   consteval { std::meta::define_aggregate(^^inner, {Info...}); }
+   consteval { std::meta::define_aggregate(^^inner, {Infos...}); }
 };
 
-template<std::meta::info... Info>
-using cls = outer<Info...>::inner;
+template<std::meta::info... Infos>
+using cls = outer<Infos...>::inner;
 
 template<typename RetType, typename... Args>
 using func_ptr_maker = RetType (*)(Args...);
@@ -239,9 +262,8 @@ consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
          // No overloads, just a single function
          const auto f = funcs.front();
          if (std::meta::is_function_template(f)) {
-            // This is std::meta::annotations_of_with_type in C++26
             const auto is_default_impl
-               = !std::meta::annotations_of(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
+               = !annotations_of_with_type(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
             assert(is_default_impl && "Templated functions can only be used for default implementations");
          }
          members.push_back(
@@ -257,9 +279,8 @@ consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
          // Oh no, there's an overload; gotta handle it
          for (const auto& f : funcs) {
             if (std::meta::is_function_template(f)) {
-               // This is std::meta::annotations_of_with_type in C++26
                const auto is_default_impl
-                  = !std::meta::annotations_of(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
+                  = !annotations_of_with_type(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
                assert(is_default_impl && "Templated functions can only be used for default implementations");
             }
             func_ptrs.push_back(member_func_to_non_member_func(f, trait));
@@ -402,17 +423,14 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
                // Default implementation
                static constexpr auto f = trait_funcs[I];
                if constexpr (std::meta::is_function_template(f)) {
-                  // This is std::meta::annotations_of_with_type in C++26
                   static constexpr auto f_sub = std::meta::substitute(f, {^^ToStore});
-                  static constexpr auto is_default
-                     = !std::meta::annotations_of(f_sub, ^^decltype(default_impl)).empty();
+                  static constexpr auto is_default = !annotations_of_with_type(f_sub, ^^decltype(default_impl)).empty();
                   static_assert(is_default, "Function templates must be default implementations");
 
                   return [:produce_func_ptr_from_info(f_sub, ^^produce_default_func_ptr):];
                }
                else {
-                  // This is std::meta::annotations_of_with_type in C++26
-                  static constexpr auto is_default = !std::meta::annotations_of(f, ^^decltype(default_impl)).empty();
+                  static constexpr auto is_default = !annotations_of_with_type(f, ^^decltype(default_impl)).empty();
                   if constexpr (is_default && std::meta::is_static_member(trait_funcs[I])) {
                      static constexpr auto to_ret = []() {
                         std::vector<std::meta::info> args;
@@ -456,12 +474,12 @@ struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eli
    non_owning_dyn_trait& operator=(non_owning_dyn_trait&&) = default;
 
    template<typename ToStore>
-      requires(std::is_const_v<Trait>)
+      requires(std::is_const_v<Trait> && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
    explicit constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
    template<typename ToStore>
-      requires(!std::is_const_v<Trait>)
+      requires(!std::is_const_v<Trait> && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
    explicit constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
@@ -553,7 +571,8 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
 
    // TODO: Add a "alloc never throws" option
    template<typename ToStore>
-      requires(sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
+      requires((sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
+               && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
    explicit constexpr owning_dyn_trait(ToStore&& obj) noexcept(
       Opt.stack_size == 0 && noexcept(new (data()) ToStore{std::forward<ToStore>(obj)}))
       : data_{gen_data<ToStore>()}, funcs_{gen_funcs<ToStore>()}
@@ -649,19 +668,22 @@ private:
 };
 
 template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
-   requires(std::is_const_v<DynTrait>)
+   requires(
+      std::is_const_v<DynTrait> && (detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>))
 constexpr auto dyn(const ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
 template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
 constexpr auto dyn(ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
 template<typename DynTrait, owning_dyn_options Opt = {}, typename ToStore>
+   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
 constexpr auto
    owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
 {
@@ -694,6 +716,7 @@ constexpr auto call(
 {
    return self.call(to_call, std::forward<T>(args)...);
 }
+
 template<typename Trait, owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
 constexpr auto call(
    const owning_dyn_trait<Trait, Opt>& self,
