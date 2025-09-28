@@ -10,10 +10,12 @@
 #include <meta>
 #include <ranges>
 
-namespace khct { inline namespace v1 {
+namespace khct {
 
 constexpr struct {
 } default_impl;
+
+namespace detail {
 
 template<std::meta::info... Info>
 struct outer {
@@ -143,7 +145,7 @@ struct func_caller<TraitClass, StartIndex, Name> {
 
    static constexpr auto get_indexer = []() consteval {
       return []<std::size_t... I>(std::index_sequence<I...>) {
-         return detail::overload_set{func_caller_helper<
+         return ::khct::detail::overload_set{func_caller_helper<
             StartIndex + I,
             typename[:member_func_to_non_member_func(funcs[I], ^^TraitClass):]>{}...};
       }(std::make_index_sequence<funcs.size()>{});
@@ -239,14 +241,6 @@ consteval std::meta::info make_non_owning_dyn_trait(std::meta::info trait, bool 
    return std::meta::substitute(^^cls, members);
 }
 
-template<typename Trait, bool IsConst>
-using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait, IsConst):];
-
-// Something about the previous type alias inhibits argument deduction
-// So do this dumb workaround instead
-template<typename Trait, bool IsConst>
-struct non_owning_dyn_trait : non_owning_dyn_trait_impl<Trait, IsConst> {};
-
 template<std::meta::info F, typename Ptr, typename Class, typename... Args>
 constexpr auto produce_func_ptr
    = +[](Ptr c, Args... args) noexcept(noexcept(static_cast<Class>(c)->[:F:](args...))) -> decltype(auto) {
@@ -271,7 +265,6 @@ consteval auto make_dyn_trait_pointers()
 
    static constexpr auto to_store_func = std::define_static_array(
       std::meta::members_of(^^ToStore, std::meta::access_context::current())
-
       | std::views::filter([](auto x) { return std::meta::is_function_template(x) || std::meta::is_function(x); })
       | std::views::filter(std::not_fn(std::meta::is_constructor))
       | std::views::filter(std::not_fn(std::meta::is_operator_function))
@@ -370,30 +363,39 @@ consteval auto make_dyn_trait_pointers()
    }.template operator()(std::make_index_sequence<trait_funcs.size()>{});
 }
 
+template<typename Trait, bool IsConst>
+using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait, IsConst):];
+
+} // namespace detail
+
+// Something about the previous type alias inhibits argument deduction, so do this instead
+template<typename Trait, bool IsConst>
+struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<Trait, IsConst> {};
+
 template<typename DynTrait, typename ToStore>
 constexpr auto dyn(const ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, true>{
-      {.data_ = ptr, .funcs_ = detail::define_static_object(make_dyn_trait_pointers<DynTrait, ToStore>())}};
+      {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
 }
 
 template<typename DynTrait, typename ToStore>
 constexpr auto dyn(ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, false>{
-      {.data_ = ptr, .funcs_ = detail::define_static_object(make_dyn_trait_pointers<DynTrait, ToStore>())}};
+      {.data_ = ptr, .funcs_ = detail::define_static_object(detail::make_dyn_trait_pointers<DynTrait, ToStore>())}};
 }
 
 template<typename Trait, bool ConstSelf, auto... FuncCallerRest, typename... T>
 constexpr auto call(
    non_owning_dyn_trait<Trait, ConstSelf> self,
-   func_caller<Trait, FuncCallerRest...> to_call,
+   detail::func_caller<Trait, FuncCallerRest...> to_call,
    T&&... args) noexcept(noexcept(to_call.template
                                   operator()<non_owning_dyn_trait<Trait, ConstSelf>>(&self, std::forward<T>(args)...)))
 {
    return to_call.template operator()<non_owning_dyn_trait<Trait, ConstSelf>>(&self, std::forward<T>(args)...);
 }
 
-}} // namespace khct::v1
+} // namespace khct
 
 #endif // CPP_DYN_HPP
