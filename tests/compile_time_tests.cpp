@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <string_view>
+#include <type_traits>
 
 struct noise_trait {
    static std::string_view get_noise() noexcept;
@@ -71,6 +72,12 @@ consteval
    khct::call(trait, trait.get_louder_twice);
    assert(khct::call(trait2, trait.volume, 1) == 4);
 }
+
+// Verify some traits (these checking traits are missing right now)
+// static_assert(std::is_trivially_relocatable_v<khct::non_owning_dyn_trait<noise_trait>> &&
+// std::is_replacable_v<khct::non_owning_dyn_trait<noise_trait>>);
+// static_assert(std::is_trivially_relocatable_v<khct::owning_dyn_trait<noise_trait>> &&
+// std::is_replacable_v<khct::owning_dyn_trait<noise_trait>>);
 
 int main()
 {

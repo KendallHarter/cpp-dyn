@@ -546,7 +546,8 @@ private:
 // This is marked final because of the way storage is done
 // TODO: Remove final once trivial unions are a thing
 template<typename Trait, owning_dyn_options Opt = {}>
-struct owning_dyn_trait final : detail::owning_dyn_trait_impl<Trait, Opt> {
+struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible final
+   : detail::owning_dyn_trait_impl<Trait, Opt> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 
