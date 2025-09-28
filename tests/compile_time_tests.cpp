@@ -1,47 +1,7 @@
 #include "cpp_dyn/cpp_dyn.hpp"
+#include "test_common.hpp"
 
 #include <cassert>
-#include <string_view>
-#include <type_traits>
-
-struct noise_trait {
-   static std::string_view get_noise() noexcept;
-
-   [[= khct::default_impl]] static constexpr std::string_view get_secondary_noise() noexcept { return "(none)"; }
-
-   template<typename T>
-   [[= khct::default_impl]] constexpr int volume(const T& obj) const noexcept
-   {
-      return obj.volume(1);
-   }
-
-   int volume(int) const noexcept;
-   void get_louder() noexcept;
-
-   template<typename T>
-   [[= khct::default_impl]] constexpr void get_louder_twice(T& obj) noexcept
-   {
-      obj.get_louder();
-      obj.get_louder();
-   }
-};
-
-struct cow {
-   static constexpr std::string_view get_noise() noexcept { return "moo"; }
-   constexpr int volume(int multiplier) const noexcept { return volume_ * multiplier; }
-   constexpr void get_louder() noexcept { volume_ += 1; }
-
-   int volume_ = 1;
-};
-
-struct dog {
-   static constexpr std::string_view get_noise() noexcept { return "arf"; }
-   static constexpr std::string_view get_secondary_noise() noexcept { return "bark"; }
-   constexpr int volume(int multiplier) const noexcept { return volume_ * multiplier; }
-   constexpr void get_louder() noexcept { volume_ *= 2; }
-
-   int volume_ = 9;
-};
 
 static constexpr cow c{};
 static constexpr dog d{};
@@ -79,14 +39,4 @@ consteval
 // static_assert(std::is_trivially_relocatable_v<khct::owning_dyn_trait<noise_trait>> &&
 // std::is_replacable_v<khct::owning_dyn_trait<noise_trait>>);
 
-int main()
-{
-   // TODO: Move this to basic_tests.cpp
-   const auto trait = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.stack_size = 8}>(cow{});
-   assert(khct::call(trait, trait.volume) == 1);
-
-   auto trait2 = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.store_vtable_inline = true}>(dog{});
-   khct::call(trait2, trait2.get_louder);
-   auto trait3 = std::move(trait2);
-   assert(khct::call(trait3, trait3.volume) == 18);
-}
+int main() {}
