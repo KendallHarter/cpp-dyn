@@ -5,6 +5,23 @@ This library depends on reflection, which is currently only implemented
 [here](https://github.com/bloomberg/clang-p2996), so it is not ready for
 "real" use yet.
 
+## Installation
+This is a single header library.  The source can be copied from `include/cpp_dyn/cpp_dyn.hpp`.
+
+It is also designed to be used from CMake, either as a subdirectory or an external project:
+
+```cmake
+Include(FetchContent)
+
+FetchContent_Declare(
+   cpp_dyn
+   GIT_REPOSITORY https://github.com/KendallHarter/cpp-dyn
+   GIT_TAG main
+)
+
+FetchContent_MakeAvailable(cpp_dyn)
+```
+
 ## Basic Usage
 
 ```cpp
