@@ -20,6 +20,8 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(cpp_dyn)
+
+target_link_library(my_target PRIVATE cpp_dyn)
 ```
 
 ## Basic Usage
