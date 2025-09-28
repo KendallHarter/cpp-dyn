@@ -562,7 +562,8 @@ private:
    static constexpr auto gen_funcs() noexcept
    {
       if constexpr (Opt.store_vtable_inline) {
-         return detail::make_dyn_trait_pointers<Trait, ToStore, true>();
+         return detail::make_dyn_trait_pointers<Trait, ToStore, true>(
+            [](void* const c) noexcept { static_cast<ToStore*>(c)->~ToStore(); });
       }
       else {
          return detail::define_static_object(
