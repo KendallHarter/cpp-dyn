@@ -1,15 +1,114 @@
 #ifndef CPP_DYN_HPP
 #define CPP_DYN_HPP
 
-#include "common.hpp"
-#include "tuple.hpp"
-
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <meta>
 #include <ranges>
 #include <type_traits>
+
+namespace khct::detail {
+
+template<typename... T>
+struct overload_set : T... {
+   using T::operator()...;
+};
+
+// The current implementation doesn't have this, so provide it here
+consteval auto define_static_object(const auto& obj)
+{
+   return &std::define_static_array(std::initializer_list{obj})[0];
+}
+
+// This is std::meta::annotations_of_with_type in C++26
+consteval auto annotations_of_with_type(std::meta::info class_, std::meta::info type) -> std::vector<std::meta::info>
+{
+   return std::meta::annotations_of(class_, type);
+}
+
+template<typename T1, typename T2>
+struct pair {
+   [[no_unique_address]] T1 first;
+   [[no_unique_address]] T2 second;
+   friend constexpr auto operator<=>(const pair&, const pair&) noexcept = default;
+};
+
+template<typename T>
+struct type_holder {
+   using type = T;
+};
+
+template<typename T, std::size_t I>
+struct tuple_base {
+   // TODO: Move only types?
+   // This is needed for some reason???
+   constexpr tuple_base(const T& val) : value{val} {}
+
+   [[no_unique_address]] T value;
+   friend constexpr bool operator==(const tuple_base&, const tuple_base&) noexcept = default;
+   friend constexpr auto operator<=>(const tuple_base&, const tuple_base&) noexcept = default;
+};
+
+template<pair... TypesAndIndexes>
+struct tuple_impl : tuple_base<typename decltype(TypesAndIndexes.first)::type, TypesAndIndexes.second>... {
+   template<std::size_t I>
+   constexpr const auto& get() const& noexcept
+   {
+      constexpr auto use_pair = TypesAndIndexes...[I];
+      return static_cast<const tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
+   }
+
+   template<std::size_t I>
+   constexpr auto& get() & noexcept
+   {
+      constexpr auto use_pair = TypesAndIndexes...[I];
+      return static_cast<tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
+   }
+
+   template<std::size_t I>
+   constexpr auto get() && noexcept
+   {
+      return get<I>();
+   }
+
+   friend constexpr bool operator==(const tuple_impl&, const tuple_impl&) noexcept = default;
+   friend constexpr auto operator<=>(const tuple_impl&, const tuple_impl&) noexcept = default;
+};
+
+template<typename... Ts, std::size_t... Is>
+consteval auto make_tuple(std::index_sequence<Is...>) noexcept
+{
+   return static_cast<tuple_impl<pair{type_holder<Ts>{}, Is}...>*>(nullptr);
+}
+
+template<typename... Ts>
+struct tuple : std::remove_reference_t<decltype(*make_tuple<Ts...>(std::index_sequence_for<Ts...>{}))> {
+   using base = std::remove_reference_t<decltype(*make_tuple<Ts...>(std::index_sequence_for<Ts...>{}))>;
+
+   // TODO: Move only types?
+   constexpr tuple(const Ts&... values) noexcept : base{values...} {}
+
+   friend constexpr bool operator==(const tuple&, const tuple&) noexcept = default;
+   friend constexpr auto operator<=>(const tuple&, const tuple&) noexcept = default;
+
+   inline static constexpr auto size = sizeof...(Ts);
+};
+
+template<typename Tuple1, typename Tuple2>
+struct append_tuple_types;
+
+template<typename... Ts1, typename... Ts2>
+struct append_tuple_types<tuple<Ts1...>, tuple<Ts2...>> {
+   using type = tuple<Ts1..., Ts2...>;
+};
+
+template<typename Tuple1, typename Tuple2>
+using append_tuple_types_t = append_tuple_types<Tuple1, Tuple2>::type;
+
+} // namespace khct::detail
 
 namespace khct {
 
@@ -25,11 +124,20 @@ inline constexpr struct {
 namespace detail {
 
 template<typename T>
+   requires(!annotations_of_with_type(^^T, ^^decltype(trait)).empty())
 struct impl_for_struct {};
+
+template<typename T>
+concept is_auto_trait = !annotations_of_with_type(^^T, ^^decltype(auto_trait)).empty();
+
+template<typename Trait, typename Type>
+concept is_trait_impl_for = !annotations_of_with_type(^^Trait, ^^decltype(trait)).empty()
+                         && !annotations_of_with_type(^^Type, ^^detail::impl_for_struct<Trait>).empty();
 
 } // namespace detail
 
 template<typename T>
+   requires(!detail::annotations_of_with_type(^^T, ^^decltype(trait)).empty())
 inline constexpr auto impl_for = detail::impl_for_struct<T>{};
 
 struct non_owning_dyn_options {
@@ -50,13 +158,6 @@ template<typename Trait, owning_dyn_options Opt>
 struct owning_dyn_trait;
 
 namespace detail {
-
-template<typename T>
-concept is_auto_trait = !annotations_of_with_type(^^T, ^^decltype(auto_trait)).empty();
-
-template<typename Trait, typename Type>
-concept is_trait_impl_for = !annotations_of_with_type(^^Trait, ^^decltype(trait)).empty()
-                         && !annotations_of_with_type(^^Type, ^^detail::impl_for_struct<Trait>).empty();
 
 template<std::meta::info... Infos>
 struct outer {
