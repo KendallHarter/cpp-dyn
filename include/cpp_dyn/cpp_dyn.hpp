@@ -442,7 +442,6 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 
 } // namespace detail
 
-// TODO: Make data_ and funcs_ private but keep the rest public
 template<typename Trait, non_owning_dyn_options Opt = {}>
 struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
    : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
