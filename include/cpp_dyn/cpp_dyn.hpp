@@ -551,11 +551,25 @@ struct owning_dyn_trait final : detail::owning_dyn_trait_impl<Trait, Opt> {
    friend struct detail::func_caller;
 
    owning_dyn_trait() = delete;
-   // Disallow copy/moving (for now?)
+   // Disallow copying (for now?)
    owning_dyn_trait(const owning_dyn_trait&) = delete;
-   owning_dyn_trait(owning_dyn_trait&&) = delete;
    owning_dyn_trait& operator=(const owning_dyn_trait&) = delete;
-   owning_dyn_trait& operator=(owning_dyn_trait&&) = delete;
+
+   // Allow moving for heap allocated data
+   owning_dyn_trait(owning_dyn_trait&&)
+      requires(Opt.stack_size == 0)
+   = default;
+   owning_dyn_trait& operator=(owning_dyn_trait&&)
+      requires(Opt.stack_size == 0)
+   = default;
+
+   // Disable moving for stack allocated things
+   owning_dyn_trait(owning_dyn_trait&&)
+      requires(Opt.stack_size > 0)
+   = delete;
+   owning_dyn_trait& operator=(owning_dyn_trait&&)
+      requires(Opt.stack_size > 0)
+   = delete;
 
    // TODO: Add a "alloc never throws" option
    template<typename ToStore>
@@ -569,11 +583,13 @@ struct owning_dyn_trait final : detail::owning_dyn_trait_impl<Trait, Opt> {
 
    constexpr ~owning_dyn_trait()
    {
-      if constexpr (Opt.store_vtable_inline) {
-         this->funcs_.template get<0>()(this);
-      }
-      else {
-         this->funcs_->template get<0>()(this);
+      if (data()) {
+         if constexpr (Opt.store_vtable_inline) {
+            this->funcs_.template get<0>()(this);
+         }
+         else {
+            this->funcs_->template get<0>()(this);
+         }
       }
    }
 
