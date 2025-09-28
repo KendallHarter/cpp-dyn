@@ -17,7 +17,6 @@ constexpr struct {
 } default_impl;
 
 struct non_owning_dyn_options {
-   bool is_const = true;
    bool store_vtable_inline = false;
 };
 
@@ -281,8 +280,7 @@ consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
    return {members, func_ptrs};
 }
 
-consteval auto make_non_owning_dyn_trait(std::meta::info trait, bool is_const, bool store_vtable_inline) noexcept
-   -> std::meta::info
+consteval auto make_non_owning_dyn_trait(std::meta::info trait) noexcept -> std::meta::info
 {
    return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, false).first);
 }
@@ -434,8 +432,8 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
    }.template operator()(std::make_index_sequence<trait_funcs.size()>{});
 }
 
-template<typename Trait, bool IsConst, bool StoreVtableInline>
-using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait, IsConst, StoreVtableInline):];
+template<typename Trait>
+using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait):];
 
 template<typename Trait, owning_dyn_options Opt>
 using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
@@ -444,7 +442,7 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 
 template<typename Trait, non_owning_dyn_options Opt = {}>
 struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
-   : detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline> {
+   : detail::non_owning_dyn_trait_impl<std::remove_const_t<Trait>> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 
@@ -458,26 +456,27 @@ struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eli
    non_owning_dyn_trait& operator=(non_owning_dyn_trait&&) = default;
 
    template<typename ToStore>
-      requires(Opt.is_const)
-   constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
+      requires(std::is_const_v<Trait>)
+   explicit constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
    template<typename ToStore>
-      requires(!Opt.is_const)
-   constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
+      requires(!std::is_const_v<Trait>)
+   explicit constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
    {}
 
    template<auto... FuncCallerRest, typename... T>
-   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) noexcept(
-      noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...))) -> decltype(auto)
+   constexpr auto
+      call(detail::func_caller<std::remove_const_t<Trait>, FuncCallerRest...> to_call, T&&... args) noexcept(
+         noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
+            this, std::forward<T>(args)...))) -> decltype(auto)
    {
       return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
          this, std::forward<T>(args)...);
    }
 
    template<auto... FuncCallerRest, typename... T>
-   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) const
+   constexpr auto call(detail::func_caller<std::remove_const_t<Trait>, FuncCallerRest...> to_call, T&&... args) const
       noexcept(noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
          this, std::forward<T>(args)...))) -> decltype(auto)
    {
@@ -486,18 +485,18 @@ struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eli
    }
 
 private:
-   using base = detail::non_owning_dyn_trait_impl<Trait, Opt.is_const, Opt.store_vtable_inline>;
+   using base = detail::non_owning_dyn_trait_impl<Trait>;
 
    using tuple_func_ptrs
       = [:std::meta::substitute(^^detail::tuple, detail::get_members_and_tuple_type(^^Trait, false).second):];
 
-   std::conditional_t<Opt.is_const, const void*, void*> data_;
+   std::conditional_t<std::is_const_v<Trait>, const void*, void*> data_;
    std::conditional_t<Opt.store_vtable_inline, tuple_func_ptrs, std::add_pointer_t<std::add_const_t<tuple_func_ptrs>>>
       funcs_;
 
    // clang-format off
    constexpr auto data() noexcept -> void*
-      requires(!Opt.is_const)
+      requires(!std::is_const_v<Trait>)
    {
       return this->data_;
    }
@@ -512,10 +511,11 @@ private:
    static constexpr auto gen_funcs() noexcept
    {
       if constexpr (Opt.store_vtable_inline) {
-         return detail::make_dyn_trait_pointers<Trait, ToStore, false>();
+         return detail::make_dyn_trait_pointers<std::remove_const_t<Trait>, ToStore, false>();
       }
       else {
-         return detail::define_static_object(detail::make_dyn_trait_pointers<Trait, ToStore, false>());
+         return detail::define_static_object(
+            detail::make_dyn_trait_pointers<std::remove_const_t<Trait>, ToStore, false>());
       }
    };
 };
@@ -554,7 +554,7 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
    // TODO: Add a "alloc never throws" option
    template<typename ToStore>
       requires(sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
-   constexpr owning_dyn_trait(ToStore&& obj) noexcept(
+   explicit constexpr owning_dyn_trait(ToStore&& obj) noexcept(
       Opt.stack_size == 0 && noexcept(new (data()) ToStore{std::forward<ToStore>(obj)}))
       : data_{gen_data<ToStore>()}, funcs_{gen_funcs<ToStore>()}
    {
@@ -649,12 +649,13 @@ private:
 };
 
 template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+   requires(std::is_const_v<DynTrait>)
 constexpr auto dyn(const ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
-template<typename DynTrait, non_owning_dyn_options Opt = {.is_const = false}, typename ToStore>
+template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
 constexpr auto dyn(ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
@@ -670,6 +671,15 @@ constexpr auto
 template<typename Trait, non_owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
 constexpr auto call(
    non_owning_dyn_trait<Trait, Opt> self,
+   detail::func_caller<Trait, FuncCallerRest...> to_call,
+   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
+{
+   return self.call(to_call, std::forward<T>(args)...);
+}
+
+template<typename Trait, non_owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
+constexpr auto call(
+   non_owning_dyn_trait<const Trait, Opt> self,
    detail::func_caller<Trait, FuncCallerRest...> to_call,
    T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
 {

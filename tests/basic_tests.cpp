@@ -16,11 +16,35 @@ TEST_CASE("Basic functionality", "[basic]")
 
    cow cow2{};
    const auto trait4 = khct::dyn<noise_trait>(&cow2);
-   const auto trait5
-      = khct::dyn<noise_trait, khct::non_owning_dyn_options{.is_const = false, .store_vtable_inline = true}>(&cow2);
+   const auto trait5 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&cow2);
    khct::call(trait4, trait4.get_louder);
    REQUIRE(khct::call(trait4, trait4.volume, 1) == 2);
    REQUIRE(khct::call(trait5, trait5.get_secondary_noise) == "(none)");
    khct::call(trait5, trait5.get_louder_twice);
    REQUIRE(khct::call(trait5, trait5.volume, 1) == 4);
+}
+
+struct my_interface {
+   int get_data() const noexcept;
+   void set_data(int);
+};
+
+struct my_struct {
+   int get_data() const noexcept { return data_; }
+   void set_data(int new_data) noexcept { data_ = new_data; }
+
+private:
+   int data_ = 1;
+};
+
+int take_interface(khct::non_owning_dyn_trait<my_interface> obj) noexcept
+{
+   obj.call(obj.set_data, 20);
+   return obj.call(obj.get_data);
+}
+
+TEST_CASE("Examples", "[example]")
+{
+   my_struct s;
+   REQUIRE(take_interface(khct::dyn<my_interface>(&s)));
 }

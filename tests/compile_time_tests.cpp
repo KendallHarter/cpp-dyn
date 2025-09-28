@@ -6,14 +6,15 @@
 static constexpr cow c{};
 static constexpr dog d{};
 
-static constexpr auto owner = khct::dyn<noise_trait>(&c);
+static constexpr auto owner = khct::dyn<const noise_trait>(&c);
 static_assert(khct::call(owner, owner.get_noise) == "moo");
 static_assert(noexcept(khct::call(owner, owner.get_noise)));
 
 // One pointer to the vtable, one pointer to data
 static_assert(sizeof(owner) == sizeof(void*) * 2);
 
-static constexpr auto owner2 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&d);
+static constexpr auto owner2
+   = khct::dyn<const noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&d);
 static_assert(khct::call(owner2, owner2.volume) == 9);
 static_assert(khct::call(owner2, owner2.volume, 2) == 18);
 static_assert(khct::call(owner2, owner2.get_secondary_noise) == "bark");
@@ -25,8 +26,7 @@ consteval
 {
    cow cow2{};
    const auto trait = khct::dyn<noise_trait>(&cow2);
-   const auto trait2
-      = khct::dyn<noise_trait, khct::non_owning_dyn_options{.is_const = false, .store_vtable_inline = true}>(&cow2);
+   const auto trait2 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&cow2);
    khct::call(trait, trait.get_louder);
    assert(khct::call(trait, trait.volume, 1) == 2);
    assert(khct::call(trait2, trait.get_secondary_noise) == "(none)");
