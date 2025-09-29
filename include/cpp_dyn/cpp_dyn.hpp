@@ -673,12 +673,12 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
    // TODO: Add a "alloc never throws" option
    template<typename ToStore>
       requires((sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
-               && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
+               && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, std::remove_reference_t<ToStore>>))
    explicit constexpr owning_dyn_trait(ToStore&& obj) noexcept(
-      Opt.stack_size == 0 && noexcept(new (data()) ToStore{std::forward<ToStore>(obj)}))
-      : data_{gen_data<ToStore>()}, funcs_{gen_funcs<ToStore>()}
+      Opt.stack_size == 0 && noexcept(new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)}))
+      : data_{gen_data<ToStore>()}, funcs_{gen_funcs<std::remove_reference_t<ToStore>>()}
    {
-      new (data()) ToStore{std::forward<ToStore>(obj)};
+      new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)};
    }
 
    constexpr ~owning_dyn_trait()
@@ -784,7 +784,7 @@ constexpr auto dyn(ToStore* ptr) noexcept
 }
 
 template<typename DynTrait, owning_dyn_options Opt = {}, typename ToStore>
-   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
+   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, std::remove_reference_t<ToStore>>)
 constexpr auto
    owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
 {

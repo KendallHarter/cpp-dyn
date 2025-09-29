@@ -35,6 +35,7 @@ struct[[= khct::impl_for<my_interface>]] my_struct {
 
 private:
    int data_ = 1;
+   std::vector<int> make_non_trivial_destructor_{1, 2, 3, 4};
 };
 
 int take_interface(khct::non_owning_dyn_trait<my_interface> obj) noexcept
@@ -43,8 +44,15 @@ int take_interface(khct::non_owning_dyn_trait<my_interface> obj) noexcept
    return obj.call(obj.get_data);
 }
 
+int take_interface2(khct::owning_dyn_trait<my_interface> obj) noexcept
+{
+   obj.call(obj.set_data, 40);
+   return obj.call(obj.get_data);
+}
+
 TEST_CASE("Examples", "[example]")
 {
    my_struct s;
-   REQUIRE(take_interface(khct::dyn<my_interface>(&s)));
+   REQUIRE(take_interface(khct::dyn<my_interface>(&s)) == 20);
+   REQUIRE(take_interface2(khct::owning_dyn<my_interface>(s)) == 40);
 }
