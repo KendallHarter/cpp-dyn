@@ -15,7 +15,7 @@ struct[[= khct::auto_trait]] noise_trait {
    }
 
    int volume(int) const noexcept;
-   void get_louder() noexcept;
+   void get_louder();
 
    template<typename T>
    [[= khct::default_impl]] constexpr void get_louder_twice(T& obj) noexcept

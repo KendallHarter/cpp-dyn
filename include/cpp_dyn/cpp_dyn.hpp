@@ -511,7 +511,11 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
                            }
                         }
 
-                        return std::meta::return_type_of(f) == std::meta::return_type_of(cur_func);
+                        // noexcept can decay to non-noexcept
+                        return std::meta::return_type_of(f) == std::meta::return_type_of(cur_func)
+                            && std::meta::is_const(f) == std::meta::is_const(cur_func)
+                            && (std::meta::is_noexcept(f) == std::meta::is_noexcept(cur_func)
+                                || !std::meta::is_noexcept(cur_func));
                      }
 
                      return false;

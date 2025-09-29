@@ -33,7 +33,7 @@ target_link_library(my_target PRIVATE cpp_dyn)
 // Defining an interface
 struct [[=khct::trait]] my_interface {
    int get_data() const noexcept;
-   void set_data(int);
+   void set_data(int) noexcept;
 };
 
 // Defining a class that implements that interface

@@ -52,6 +52,9 @@ using `khct::auto_trait`, any structures that implement the interface can be use
 Below is a basic example of using `khct::trait`, `khct::auto_trait`, and `khct::impl_for`:
 
 ```cpp
+#include "cpp_dyn/cpp_dyn.hpp"
+#include <cassert>
+
 // Defining an interface
 struct [[=khct::trait]] my_interface {
    int get_data() const noexcept;
