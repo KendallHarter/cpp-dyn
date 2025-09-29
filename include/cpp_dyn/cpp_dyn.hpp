@@ -685,10 +685,10 @@ struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligibl
    {
       if (data()) {
          if constexpr (Opt.store_vtable_inline) {
-            this->funcs_.template get<0>()(this);
+            this->funcs_.template get<0>()(data());
          }
          else {
-            this->funcs_->template get<0>()(this);
+            this->funcs_->template get<0>()(data());
          }
       }
    }
