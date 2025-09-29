@@ -55,22 +55,22 @@ Below is a basic example of using `khct::trait`, `khct::auto_trait`, and `khct::
 // Defining an interface
 struct [[=khct::trait]] my_interface {
    int get_data() const noexcept;
-   void set_data(int);
+   void set_data(int) noexcept;
 };
 
-// An automatic trait
-struct [[=khct::auto_trait]] interface2 {
-   int get_data() const noexcept;
-   void set_data(int);
-};
-
-// Defining a class that implements that interface
+// Defining a class that implements the first interface
 struct [[=khct::impl_for<my_interface>]] my_struct {
    int get_data() const noexcept { return data_; }
    void set_data(int new_data) noexcept { data_ = new_data; }
 
 private:
    int data_ = 1;
+};
+
+// An automatic trait
+struct [[=khct::auto_trait]] interface2 {
+   int get_data() const noexcept;
+   void set_data(int) noexcept;
 };
 
 // Using the first interface
@@ -100,3 +100,7 @@ TODO: Explain default_impl
 ### Dyn Trait Struct Options
 
 TODO: Explain these
+
+### Notes
+
+TODO: Explain `khct::call` being a thing for dependant contexts
