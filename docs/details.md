@@ -98,12 +98,43 @@ int main()
 }
 ```
 
-TODO: Explain default_impl
+Default implementations can also be provided as follows:
+
+```cpp
+struct [[=khct::trait]] my_interface {
+   // Default implementation for a static function
+   [[=khct::default_impl]] static void do_nothing() noexcept {}
+
+   // Default implementation for a member function
+   // Note that it must be a template and that the const-ness
+   // of the method and object must match
+   template<typename T>
+      [[=khct::default_impl]]
+   const void* (const T& obj) get_addr() const noexcept { return &obj; }
+};
+```
 
 ### Dyn Trait Struct Options
 
-TODO: Explain these
+```cpp
+namespace khct {
 
-### Notes
+struct non_owning_dyn_options {
+   // If the vtable should be stored directly in the object
+   // (if true) or if the object should store a pointer to it
+   bool store_vtable_inline = false;
+}
 
-TODO: Explain `khct::call` being a thing for dependant contexts
+struct owning_dyn_options {
+   // If the vtable should be stored directly in the object
+   // (if true) or if the object should store a pointer to it
+   bool store_vtable_inline = false;
+
+   // The number of bytes to store objects into.
+   // If this is 0, dynamically allocate objects
+   // instead of locally storing them.
+   std::size_t stack_size = 0;
+}
+
+}
+```

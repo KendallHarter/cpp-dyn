@@ -7,21 +7,21 @@
 TEST_CASE("Basic functionality", "[basic]")
 {
    const auto trait = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.stack_size = 8}>(cow{});
-   REQUIRE(khct::call(trait, trait.volume) == 1);
+   REQUIRE(trait.call(trait.volume) == 1);
 
    auto trait2 = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.store_vtable_inline = true}>(dog{});
-   khct::call(trait2, trait2.get_louder);
+   trait2.call(trait2.get_louder);
    auto trait3 = std::move(trait2);
-   REQUIRE(khct::call(trait3, trait3.volume) == 18);
+   REQUIRE(trait3.call(trait3.volume) == 18);
 
    cow cow2{};
-   const auto trait4 = khct::dyn<noise_trait>(&cow2);
-   const auto trait5 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&cow2);
-   khct::call(trait4, trait4.get_louder);
-   REQUIRE(khct::call(trait4, trait4.volume, 1) == 2);
-   REQUIRE(khct::call(trait5, trait5.get_secondary_noise) == "(none)");
-   khct::call(trait5, trait5.get_louder_twice);
-   REQUIRE(khct::call(trait5, trait5.volume, 1) == 4);
+   auto trait4 = khct::dyn<noise_trait>(&cow2);
+   auto trait5 = khct::dyn<noise_trait, khct::non_owning_dyn_options{.store_vtable_inline = true}>(&cow2);
+   trait4.call(trait4.get_louder);
+   REQUIRE(trait4.call(trait4.volume, 1) == 2);
+   REQUIRE(trait5.call(trait5.get_secondary_noise) == "(none)");
+   trait5.call(trait5.get_louder_twice);
+   REQUIRE(trait5.call(trait5.volume, 1) == 4);
 }
 
 struct[[= khct::trait]] my_interface {
@@ -38,7 +38,8 @@ private:
    std::vector<int> make_non_trivial_destructor_{1, 2, 3, 4};
 };
 
-int take_interface(khct::non_owning_dyn_trait<my_interface> obj) noexcept
+template<khct::non_owning_dyn_options Opt>
+int take_interface(khct::non_owning_dyn_trait<my_interface, Opt> obj) noexcept
 {
    obj.call(obj.set_data, 20);
    return obj.call(obj.get_data);

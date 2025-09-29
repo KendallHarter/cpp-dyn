@@ -795,42 +795,6 @@ constexpr auto
    return owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)};
 }
 
-template<typename Trait, non_owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
-constexpr auto call(
-   non_owning_dyn_trait<Trait, Opt> self,
-   detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
-{
-   return self.call(to_call, std::forward<T>(args)...);
-}
-
-template<typename Trait, non_owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
-constexpr auto call(
-   non_owning_dyn_trait<const Trait, Opt> self,
-   detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
-{
-   return self.call(to_call, std::forward<T>(args)...);
-}
-
-template<typename Trait, owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
-constexpr auto call(
-   owning_dyn_trait<Trait, Opt>& self,
-   detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
-{
-   return self.call(to_call, std::forward<T>(args)...);
-}
-
-template<typename Trait, owning_dyn_options Opt, auto... FuncCallerRest, typename... T>
-constexpr auto call(
-   const owning_dyn_trait<Trait, Opt>& self,
-   detail::func_caller<Trait, FuncCallerRest...> to_call,
-   T&&... args) noexcept(noexcept(self.call(to_call, std::forward<T>(args)...))) -> decltype(auto)
-{
-   return self.call(to_call, std::forward<T>(args)...);
-}
-
 } // namespace khct
 
 #endif // CPP_DYN_HPP
