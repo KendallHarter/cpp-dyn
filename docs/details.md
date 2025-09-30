@@ -2,10 +2,14 @@
 
 There are two different primary dyn trait structs, owning and non-owning:
 ```cpp
-template<typename Trait, non_owning_dyn_options Opt = {}>
+template<
+   typename Trait,
+   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<Trait>>
 struct khct::non_owning_dyn_trait;
 
-template<typename Trait, owning_dyn_options Opt = {}>
+template<
+   typename Trait,
+   owning_dyn_options Opt = khct::default_owning_opt_for<DynTrait>>
 struct khct::owning_dyn_trait;
 ```
 
