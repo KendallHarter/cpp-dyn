@@ -106,8 +106,8 @@ int take_interface2(khct::non_owning_dyn_trait<interface2> obj) noexcept
 int main()
 {
    my_struct s;
-   assert(take_interface(khct::dyn<my_interface>(&s)) == 20);
-   assert(take_interface(khct::dyn<interface2>(&s)) == 40);
+   assert(take_interface1(khct::dyn<my_interface>(&s)) == 20);
+   assert(take_interface2(khct::dyn<interface2>(&s)) == 40);
 }
 ```
 
