@@ -15,18 +15,18 @@ There are two overload sets for creating instances of these structs
 (with noexcept specifiers omitted):
 
 ```cpp
-template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+template<typename DynTrait, non_owning_dyn_options Opt, typename ToStore>
 constexpr auto khct::dyn(const ToStore* ptr) noexcept;
 
-template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+template<typename DynTrait, non_owning_dyn_options Opt, typename ToStore>
 constexpr auto khct::dyn(ToStore* ptr) noexcept;
 
-template<typename DynTrait, owning_dyn_options Opt = {}, typename ToStore>
+template<typename DynTrait, owning_dyn_options Opt, typename ToStore>
 constexpr auto khct::owning_dyn(ToStore&& to_store);
 ```
 
 `khct::dyn` is used to create non-owning dyn traits and `khct::owning_dyn` is used to create
-owning dyn traits.
+owning dyn traits.  Generally, only the first parameter needs to be supplied.
 
 These are used as such (assuming `my_trait` is a trait and `my_obj` is a value that conforms to it):
 

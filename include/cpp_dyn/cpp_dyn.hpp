@@ -447,12 +447,7 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
       return std::define_static_array(trait_funcs);
    }();
 
-   static constexpr auto to_store_func = std::define_static_array(
-      std::meta::members_of(^^ToStore, std::meta::access_context::current())
-      | std::views::filter([](auto x) { return std::meta::is_function_template(x) || std::meta::is_function(x); })
-      | std::views::filter(std::not_fn(std::meta::is_constructor))
-      | std::views::filter(std::not_fn(std::meta::is_operator_function))
-      | std::views::filter(std::not_fn(std::meta::is_destructor)));
+   static constexpr auto to_store_func = std::define_static_array(get_sorted_funcs_by_name(^^ToStore));
 
    using ret_type = [:std::meta::substitute(^^detail::tuple, func_ptrs):];
 
@@ -563,7 +558,9 @@ using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
 
 } // namespace detail
 
-template<typename Trait, non_owning_dyn_options Opt = {}>
+template<
+   typename Trait,
+   non_owning_dyn_options Opt = {.store_vtable_inline = detail::get_sorted_funcs_by_name(^^Trait).size() <= 1}>
 struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
    : detail::non_owning_dyn_trait_impl<std::remove_const_t<Trait>> {
    template<typename TraitClass, auto... Rest>
@@ -644,7 +641,9 @@ private:
 };
 
 // This is marked final because of the way storage is done
-template<typename Trait, owning_dyn_options Opt = {}>
+template<
+   typename Trait,
+   owning_dyn_options Opt = {.store_vtable_inline = detail::get_sorted_funcs_by_name(^^Trait).size() <= 1}>
 struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible final
    : detail::owning_dyn_trait_impl<Trait, Opt> {
    template<typename TraitClass, auto... Rest>
@@ -772,7 +771,10 @@ private:
    };
 };
 
-template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+template<
+   typename DynTrait,
+   non_owning_dyn_options Opt = {.store_vtable_inline = detail::get_sorted_funcs_by_name(^^DynTrait).size() <= 1},
+   typename ToStore>
    requires(
       std::is_const_v<DynTrait> && (detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>))
 constexpr auto dyn(const ToStore* ptr) noexcept
@@ -780,14 +782,20 @@ constexpr auto dyn(const ToStore* ptr) noexcept
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
-template<typename DynTrait, non_owning_dyn_options Opt = {}, typename ToStore>
+template<
+   typename DynTrait,
+   non_owning_dyn_options Opt = {.store_vtable_inline = detail::get_sorted_funcs_by_name(^^DynTrait).size() <= 1},
+   typename ToStore>
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
 constexpr auto dyn(ToStore* ptr) noexcept
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
-template<typename DynTrait, owning_dyn_options Opt = {}, typename ToStore>
+template<
+   typename DynTrait,
+   owning_dyn_options Opt = {.store_vtable_inline = detail::get_sorted_funcs_by_name(^^DynTrait).size() <= 1},
+   typename ToStore>
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, std::remove_reference_t<ToStore>>)
 constexpr auto
    owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
