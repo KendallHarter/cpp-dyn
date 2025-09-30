@@ -15,13 +15,22 @@ There are two overload sets for creating instances of these structs
 (with noexcept specifiers omitted):
 
 ```cpp
-template<typename DynTrait, non_owning_dyn_options Opt, typename ToStore>
-constexpr auto khct::dyn(const ToStore* ptr) noexcept;
+template<
+   typename DynTrait,
+   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
+   typename ToStore>
+constexpr auto khct::dyn(const ToStore* ptr);
 
-template<typename DynTrait, non_owning_dyn_options Opt, typename ToStore>
-constexpr auto khct::dyn(ToStore* ptr) noexcept;
+template<
+   typename DynTrait,
+   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
+   typename ToStore>
+constexpr auto khct::dyn(ToStore* ptr);
 
-template<typename DynTrait, owning_dyn_options Opt, typename ToStore>
+template<
+   typename DynTrait,
+   owning_dyn_options Opt = khct::default_owning_opt_for<DynTrait>,
+   typename ToStore>
 constexpr auto khct::owning_dyn(ToStore&& to_store);
 ```
 
@@ -122,18 +131,18 @@ namespace khct {
 struct non_owning_dyn_options {
    // If the vtable should be stored directly in the object
    // (if true) or if the object should store a pointer to it
-   bool store_vtable_inline = false;
+   bool store_vtable_inline;
 }
 
 struct owning_dyn_options {
    // If the vtable should be stored directly in the object
    // (if true) or if the object should store a pointer to it
-   bool store_vtable_inline = false;
+   bool store_vtable_inline;
 
    // The number of bytes to store objects into.
    // If this is 0, dynamically allocate objects
    // instead of locally storing them.
-   std::size_t stack_size = 0;
+   std::size_t stack_size;
 }
 
 }
