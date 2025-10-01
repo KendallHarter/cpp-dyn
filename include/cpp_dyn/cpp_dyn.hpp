@@ -778,14 +778,14 @@ private:
 template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_for<DynTrait>, typename ToStore>
    requires(
       std::is_const_v<DynTrait> && (detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>))
-constexpr auto dyn(const ToStore* ptr) noexcept
+constexpr auto dyn(const ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
 
 template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_for<DynTrait>, typename ToStore>
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
-constexpr auto dyn(ToStore* ptr) noexcept
+constexpr auto dyn(ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
 {
    return non_owning_dyn_trait<DynTrait, Opt>{ptr};
 }
@@ -794,6 +794,7 @@ template<typename DynTrait, owning_dyn_options Opt = default_owning_opt_for<DynT
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, std::remove_reference_t<ToStore>>)
 constexpr auto
    owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
+      -> owning_dyn_trait<DynTrait, Opt>
 {
    return owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)};
 }

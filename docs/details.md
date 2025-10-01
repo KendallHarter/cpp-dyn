@@ -23,19 +23,22 @@ template<
    typename DynTrait,
    non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
    typename ToStore>
-constexpr auto khct::dyn(const ToStore* ptr);
+constexpr auto khct::dyn(const ToStore* ptr)
+   -> non_owning_dyn_trait<DynTrait, Opt>;
 
 template<
    typename DynTrait,
    non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
    typename ToStore>
-constexpr auto khct::dyn(ToStore* ptr);
+constexpr auto khct::dyn(ToStore* ptr)
+   -> non_owning_dyn_trait<DynTrait, Opt>;
 
 template<
    typename DynTrait,
    owning_dyn_options Opt = khct::default_owning_opt_for<DynTrait>,
    typename ToStore>
-constexpr auto khct::owning_dyn(ToStore&& to_store);
+constexpr auto khct::owning_dyn(ToStore&& to_store)
+   -> owning_dyn_trait<DynTrait, Opt>;
 ```
 
 `khct::dyn` is used to create non-owning dyn traits and `khct::owning_dyn` is used to create
