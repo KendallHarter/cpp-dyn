@@ -645,9 +645,8 @@ private:
    };
 };
 
-// This is marked final because of the way storage is done
 template<typename Trait, owning_dyn_options Opt = default_owning_opt_for<Trait>>
-struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible final
+struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
    : detail::owning_dyn_trait_impl<Trait, Opt> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
