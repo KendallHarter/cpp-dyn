@@ -563,8 +563,7 @@ inline constexpr auto default_non_owning_opt_for
    = non_owning_dyn_options{.store_vtable_inline = detail::get_sorted_funcs_by_name(^^T).size() <= 1};
 
 template<typename T>
-inline constexpr auto default_owning_opt_for
-   = owning_dyn_options{.store_vtable_inline = detail::get_sorted_funcs_by_name(^^T).size() <= 1, .stack_size = 0};
+inline constexpr auto default_owning_opt_for = owning_dyn_options{.store_vtable_inline = false, .stack_size = 0};
 
 template<typename Trait, non_owning_dyn_options Opt = default_non_owning_opt_for<Trait>>
 struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
