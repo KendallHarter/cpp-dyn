@@ -79,14 +79,11 @@ struct tuple_impl : tuple_base<typename decltype(TypesAndIndexes.first)::type, T
 };
 
 template<typename... Ts, std::size_t... Is>
-consteval auto make_tuple(std::index_sequence<Is...>) noexcept
-{
-   return static_cast<tuple_impl<pair{type_holder<Ts>{}, Is}...>*>(nullptr);
-}
+consteval auto make_tuple(std::index_sequence<Is...>) -> tuple_impl<pair{type_holder<Ts>{}, Is}...>;
 
 template<typename... Ts>
-struct tuple : std::remove_reference_t<decltype(*make_tuple<Ts...>(std::index_sequence_for<Ts...>{}))> {
-   using base = std::remove_reference_t<decltype(*make_tuple<Ts...>(std::index_sequence_for<Ts...>{}))>;
+struct tuple : decltype(make_tuple<Ts...>(std::index_sequence_for<Ts...>{})) {
+   using base = decltype(make_tuple<Ts...>(std::index_sequence_for<Ts...>{}));
 
    // TODO: Move only types?
    constexpr tuple(const Ts&... values) noexcept : base{values...} {}
