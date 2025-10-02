@@ -29,69 +29,28 @@ consteval auto annotations_of_with_type(std::meta::info class_, std::meta::info 
    return std::meta::annotations_of(class_, type);
 }
 
-template<typename T1, typename T2>
-struct pair {
-   [[no_unique_address]] T1 first;
-   [[no_unique_address]] T2 second;
-   friend constexpr auto operator<=>(const pair&, const pair&) noexcept = default;
-};
-
-template<typename T>
-struct type_holder {
-   using type = T;
-};
-
-template<typename T, std::size_t I>
-struct tuple_base {
-   // TODO: Move only types?
-   // This is needed for some reason???
-   constexpr tuple_base(const T& val) : value{val} {}
-
-   [[no_unique_address]] T value;
-   friend constexpr bool operator==(const tuple_base&, const tuple_base&) noexcept = default;
-   friend constexpr auto operator<=>(const tuple_base&, const tuple_base&) noexcept = default;
-};
-
-template<pair... TypesAndIndexes>
-struct tuple_impl : tuple_base<typename decltype(TypesAndIndexes.first)::type, TypesAndIndexes.second>... {
-   template<std::size_t I>
-   constexpr const auto& get() const& noexcept
-   {
-      constexpr auto use_pair = TypesAndIndexes...[I];
-      return static_cast<const tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
-   }
-
-   template<std::size_t I>
-   constexpr auto& get() & noexcept
-   {
-      constexpr auto use_pair = TypesAndIndexes...[I];
-      return static_cast<tuple_base<typename decltype(use_pair.first)::type, use_pair.second>*>(this)->value;
-   }
-
-   template<std::size_t I>
-   constexpr auto get() && noexcept
-   {
-      return get<I>();
-   }
-
-   friend constexpr bool operator==(const tuple_impl&, const tuple_impl&) noexcept = default;
-   friend constexpr auto operator<=>(const tuple_impl&, const tuple_impl&) noexcept = default;
-};
-
-template<typename... Ts, std::size_t... Is>
-consteval auto make_tuple(std::index_sequence<Is...>) -> tuple_impl<pair{type_holder<Ts>{}, Is}...>;
-
 template<typename... Ts>
-struct tuple : decltype(make_tuple<Ts...>(std::index_sequence_for<Ts...>{})) {
-   using base = decltype(make_tuple<Ts...>(std::index_sequence_for<Ts...>{}));
+struct tuple {
+   template<std::size_t I>
+   constexpr auto get() const noexcept -> const auto&
+   {
+      return data_.[:impl_members[I]:];
+   }
 
-   // TODO: Move only types?
-   constexpr tuple(const Ts&... values) noexcept : base{values...} {}
+   explicit constexpr tuple(const Ts&... vals) : data_{vals...} {}
 
-   friend constexpr bool operator==(const tuple&, const tuple&) noexcept = default;
-   friend constexpr auto operator<=>(const tuple&, const tuple&) noexcept = default;
+   struct impl;
+   consteval
+   {
+      std::meta::define_aggregate(^^impl, {std::meta::data_member_spec(^^Ts, {.no_unique_address = true})...});
+   }
 
-   inline static constexpr auto size = sizeof...(Ts);
+   // public so that this is a structural type
+   impl data_;
+
+private:
+   static constexpr auto impl_members
+      = std::define_static_array(std::meta::nonstatic_data_members_of(^^impl, std::meta::access_context::current()));
 };
 
 template<typename Tuple1, typename Tuple2>
