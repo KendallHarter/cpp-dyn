@@ -1,8 +1,8 @@
 module;
 
-#include "cpp_dyn/cpp_dyn.hpp"
+#include "khct/cpp_dyn.hpp"
 
-export module cpp_dyn;
+export module khct.cpp_dyn;
 
 export namespace khct {
 

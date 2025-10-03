@@ -1,4 +1,4 @@
-import cpp_dyn;
+import khct.cpp_dyn;
 
 #include "test_common.hpp"
 
@@ -8,7 +8,7 @@ import cpp_dyn;
 TEST_CASE("Basic functionality", "[basic]")
 {
    const auto trait = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.stack_size = 8}>(cow{});
-   REQUIRE(khct::call(trait, trait.volume) == 1);
+   REQUIRE(trait.call(trait.volume) == 1);
 
    auto trait2 = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.store_vtable_inline = true}>(dog{});
    trait2.call(trait2.get_louder);

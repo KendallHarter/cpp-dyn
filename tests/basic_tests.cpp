@@ -1,4 +1,4 @@
-#include "cpp_dyn/cpp_dyn.hpp"
+#include "khct/cpp_dyn.hpp"
 #include "test_common.hpp"
 
 #include <catch2/benchmark/catch_benchmark.hpp>

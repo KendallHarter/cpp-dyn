@@ -6,7 +6,7 @@ This library depends on reflection, which is currently only implemented
 "real" use yet.
 
 ## Installation
-This is a single header library.  The source can be copied from `include/cpp_dyn/cpp_dyn.hpp`.
+This is a single header library.  The source can be copied from `include/khct/cpp_dyn.hpp`.
 
 It is also designed to be used from CMake, either as a subdirectory or an external project:
 
@@ -27,7 +27,7 @@ target_link_library(my_target PRIVATE cpp_dyn)
 ## Basic Usage
 
 ```cpp
-#include "cpp_dyn/cpp_dyn.hpp"
+#include "khct/cpp_dyn.hpp"
 #include <cassert>
 
 // Defining an interface
