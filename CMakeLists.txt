@@ -43,7 +43,7 @@ if("${CPP_DYN_ENABLE_MODULE}")
 endif()
 
 if("${CPP_DYN_BUILD_TESTS}")
-   Include(FetchContent)
+   include(FetchContent)
 
    FetchContent_Declare(
       Catch2

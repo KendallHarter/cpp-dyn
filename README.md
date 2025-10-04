@@ -11,7 +11,7 @@ This is a single header library.  The source can be copied from `include/khct/cp
 It is also designed to be used from CMake, either as a subdirectory or an external project:
 
 ```cmake
-Include(FetchContent)
+include(FetchContent)
 
 FetchContent_Declare(
    cpp_dyn
