@@ -590,7 +590,7 @@ private:
    // clang-format on
 
    template<typename ToStore>
-   static constexpr auto gen_funcs() noexcept
+   static constexpr auto gen_funcs() noexcept -> auto
    {
       if constexpr (Opt.store_vtable_inline) {
          return detail::make_dyn_trait_pointers<std::remove_const_t<Trait>, ToStore, false>();
@@ -705,7 +705,7 @@ private:
    }
 
    template<typename ToStore>
-   static constexpr auto gen_data() noexcept
+   static constexpr auto gen_data() noexcept -> auto
    {
       if constexpr (Opt.stack_size > 0) {
          return std::array<unsigned char, Opt.stack_size>{};
@@ -716,7 +716,7 @@ private:
    };
 
    template<typename ToStore>
-   static constexpr auto gen_funcs() noexcept
+   static constexpr auto gen_funcs() noexcept -> auto
    {
       if constexpr (Opt.store_vtable_inline) {
          return detail::make_dyn_trait_pointers<Trait, ToStore, true>(
