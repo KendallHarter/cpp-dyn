@@ -18,7 +18,7 @@ struct overload_set : T... {
 };
 
 // The current implementation doesn't have this, so provide it here
-consteval auto define_static_object(const auto& obj)
+consteval auto define_static_object(const auto& obj) -> auto
 {
    return &std::define_static_array(std::initializer_list{obj})[0];
 }
@@ -31,26 +31,27 @@ consteval auto annotations_of_with_type(std::meta::info class_, std::meta::info 
 
 template<typename... Ts>
 struct tuple {
-   template<std::size_t I>
-   constexpr auto get() const noexcept -> const auto&
-   {
-      return data_.[:impl_members[I]:];
-   }
-
-   explicit constexpr tuple(const Ts&... vals) : data_{vals...} {}
-
+private:
    struct impl;
    consteval
    {
       std::meta::define_aggregate(^^impl, {std::meta::data_member_spec(^^Ts, {.no_unique_address = true})...});
    }
 
+   static constexpr auto impl_members
+      = std::define_static_array(std::meta::nonstatic_data_members_of(^^impl, std::meta::access_context::current()));
+
+public:
    // public so that this is a structural type
    impl data_;
 
-private:
-   static constexpr auto impl_members
-      = std::define_static_array(std::meta::nonstatic_data_members_of(^^impl, std::meta::access_context::current()));
+   template<std::size_t I>
+   constexpr auto get() const noexcept -> const auto&
+   {
+      return data_.[:impl_members[I]:];
+   }
+
+   explicit constexpr tuple(const Ts&... vals) noexcept(noexcept(impl{vals...})) : data_{vals...} {}
 };
 
 template<typename Tuple1, typename Tuple2>
@@ -386,7 +387,7 @@ constexpr auto produce_default_static_func_ptr
    = +[](const void*, Args... args) noexcept(noexcept([:F:](args...))) -> decltype(auto) { return [:F:](args...); };
 
 template<typename Trait, typename ToStore, bool IsOwned>
-constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr)
+constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr) -> auto
 {
    static constexpr auto func_ptrs = []() consteval {
       auto func_ptrs = get_members_and_tuple_type(^^Trait, IsOwned).second;
