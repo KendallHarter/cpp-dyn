@@ -409,7 +409,7 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
    using ret_type = [:std::meta::substitute(^^detail::tuple, func_ptrs):];
 
    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-      return ret_type {
+      return ret_type{
          // clang-format off
          [&]<std::size_t I>() -> [:func_ptrs[I]:] {
             // clang-format on
@@ -502,8 +502,7 @@ constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr
                }
                throw "invalid name/no default";
             }
-         }.template operator()<Is>()...
-      };
+         }.template operator()<Is>()...};
    }.template operator()(std::make_index_sequence<trait_funcs.size()>{});
 }
 
@@ -523,8 +522,7 @@ template<typename T>
 inline constexpr auto default_owning_opt_for = owning_dyn_options{.store_vtable_inline = false, .stack_size = 0};
 
 template<typename Trait, non_owning_dyn_options Opt = default_non_owning_opt_for<Trait>>
-struct non_owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
-   : detail::non_owning_dyn_trait_impl<std::remove_const_t<Trait>> {
+struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<std::remove_const_t<Trait>> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 
@@ -603,8 +601,7 @@ private:
 };
 
 template<typename Trait, owning_dyn_options Opt = default_owning_opt_for<Trait>>
-struct owning_dyn_trait trivially_relocatable_if_eligible replaceable_if_eligible
-   : detail::owning_dyn_trait_impl<Trait, Opt> {
+struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
    template<typename TraitClass, auto... Rest>
    friend struct detail::func_caller;
 

@@ -60,3 +60,9 @@ int main()
 ```
 
 See [here](docs/details.md) for more detailed usage.
+
+## Limitations
+
+Explicit this parameters are not supported.
+
+Compilation errors are a nightmare.
