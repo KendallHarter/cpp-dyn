@@ -19,8 +19,8 @@ static_assert(owner2.call(owner2.volume) == 9);
 static_assert(owner2.call(owner2.volume, 2) == 18);
 static_assert(owner2.call(owner2.get_secondary_noise) == "bark");
 
-// One pointer to the data, 6 pointers to methods
-static_assert(sizeof(owner2) == sizeof(void*) + sizeof(void*) * 6);
+// One pointer to the data, 5 pointers to methods
+static_assert(sizeof(owner2) == sizeof(void*) + sizeof(void*) * 5);
 
 consteval
 {
@@ -30,14 +30,8 @@ consteval
    trait.call(trait.get_louder);
    assert(trait.call(trait.volume, 1) == 2);
    assert(trait2.call(trait.get_secondary_noise) == "(none)");
-   trait.call(trait.get_louder_twice);
-   assert(trait2.call(trait.volume, 1) == 4);
+   trait.call(trait.get_louder);
+   assert(trait2.call(trait.volume, 1) == 3);
 }
-
-// Verify some traits (these checking traits are missing right now)
-// static_assert(std::is_trivially_relocatable_v<khct::non_owning_dyn_trait<noise_trait>> &&
-// std::is_replacable_v<khct::non_owning_dyn_trait<noise_trait>>);
-// static_assert(std::is_trivially_relocatable_v<khct::owning_dyn_trait<noise_trait>> &&
-// std::is_replacable_v<khct::owning_dyn_trait<noise_trait>>);
 
 int main() {}

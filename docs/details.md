@@ -114,6 +114,11 @@ int main()
 }
 ```
 
+<!--
+
+These currently don't work because substitution requires an object that conforms to the trait,
+which I don't think is presently possible, unfortunately.
+
 Default implementations can also be provided as follows:
 
 ```cpp
@@ -126,9 +131,10 @@ struct [[=khct::trait]] my_interface {
    // of the method and object must match
    template<typename T>
       [[=khct::default_impl]]
-   const void* (const T& obj) get_addr() const noexcept { return &obj; }
+   const void* (const T& obj) get_addr() const noexcept { return std::address_of(obj); }
 };
 ```
+-->
 
 ### Dyn Trait Struct Options
 
@@ -139,7 +145,7 @@ struct non_owning_dyn_options {
    // If the vtable should be stored directly in the object
    // (if true) or if the object should store a pointer to it
    bool store_vtable_inline;
-}
+};
 
 struct owning_dyn_options {
    // If the vtable should be stored directly in the object
@@ -150,7 +156,7 @@ struct owning_dyn_options {
    // If this is 0, dynamically allocate objects
    // instead of locally storing them.
    std::size_t stack_size;
-}
+};
 
 }
 ```

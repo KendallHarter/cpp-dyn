@@ -7,6 +7,7 @@
 TEST_CASE("Basic functionality", "[basic]")
 {
    const auto trait = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.stack_size = 8}>(cow{});
+   trait.call(trait.volume);
    REQUIRE(trait.call(trait.volume) == 1);
 
    auto trait2 = khct::owning_dyn<noise_trait, khct::owning_dyn_options{.store_vtable_inline = true}>(dog{});
@@ -20,8 +21,6 @@ TEST_CASE("Basic functionality", "[basic]")
    trait4.call(trait4.get_louder);
    REQUIRE(trait4.call(trait4.volume, 1) == 2);
    REQUIRE(trait5.call(trait5.get_secondary_noise) == "(none)");
-   trait5.call(trait5.get_louder_twice);
-   REQUIRE(trait5.call(trait5.volume, 1) == 4);
 }
 
 struct[[= khct::trait]] my_interface {

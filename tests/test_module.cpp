@@ -21,8 +21,6 @@ TEST_CASE("Basic functionality", "[basic]")
    trait4.call(trait4.get_louder);
    REQUIRE(trait4.call(trait4.volume, 1) == 2);
    REQUIRE(trait5.call(trait5.get_secondary_noise) == "(none)");
-   trait5.call(trait5.get_louder_twice);
-   REQUIRE(trait5.call(trait5.volume, 1) == 4);
 }
 
 struct[[= khct::trait]] my_interface {

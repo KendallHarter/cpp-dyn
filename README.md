@@ -2,8 +2,7 @@
 A C++26 library for Rust-like dyn traits
 
 This library depends on reflection, which is currently only implemented
-[here](https://github.com/bloomberg/clang-p2996), so it is not ready for
-"real" use yet.
+in GCC16.
 
 ## Installation
 This is a single header library.  The source can be copied from `include/khct/cpp_dyn.hpp`.
@@ -21,7 +20,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(cpp_dyn)
 
-target_link_library(my_target PRIVATE cpp_dyn)
+target_link_library(my_target PRIVATE khct::cpp_dyn)
 ```
 
 ## Basic Usage
@@ -66,3 +65,7 @@ See [here](docs/details.md) for more detailed usage.
 Explicit this parameters are not supported.
 
 Compilation errors are a nightmare.
+
+No default implementations (for now?).
+
+Templates are not supported and never will be as it is unimplementable.
