@@ -1,9 +1,39 @@
-import khct.cpp_dyn;
-
-#include "test_common.hpp"
-
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+import khct.cpp_dyn;
+
+// Because of module weirdness with GCC(?) need to include the headers first
+// but trying to include test_common.hpp means we aren't using the module or khct namespace is undefined
+// ...so the best way to fix this is to copy/paste
+
+struct[[= khct::auto_trait]] noise_trait {
+   static std::string_view get_noise() noexcept;
+   static constexpr std::string_view get_secondary_noise() noexcept;
+   constexpr int volume() const noexcept;
+   constexpr int volume(int) const noexcept;
+   constexpr void get_louder();
+};
+
+struct cow {
+   static constexpr std::string_view get_noise() noexcept { return "moo"; }
+   static constexpr std::string_view get_secondary_noise() noexcept { return "(none)"; };
+   constexpr int volume() const noexcept { return volume_; }
+   constexpr int volume(int multiplier) const noexcept { return volume_ * multiplier; }
+   constexpr void get_louder() noexcept { volume_ += 1; }
+
+   int volume_ = 1;
+};
+
+struct dog {
+   static constexpr std::string_view get_noise() noexcept { return "arf"; }
+   static constexpr std::string_view get_secondary_noise() noexcept { return "bark"; }
+   constexpr int volume() const noexcept { return volume_; }
+   constexpr int volume(int multiplier) const noexcept { return volume_ * multiplier; }
+   constexpr void get_louder() noexcept { volume_ *= 2; }
+
+   int volume_ = 9;
+};
 
 TEST_CASE("Basic functionality", "[basic]")
 {

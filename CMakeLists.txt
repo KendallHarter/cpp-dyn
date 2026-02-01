@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(KHCT_CPP_DYN_BUILD_TESTS "Build tests for the library")
-# option(KHCT_CPP_DYN_ENABLE_MODULE "Enable building module files")
+option(KHCT_CPP_DYN_ENABLE_MODULE "Enable building module files")
 
 add_library(cpp_dyn INTERFACE)
 
@@ -53,8 +53,8 @@ if("${KHCT_CPP_DYN_BUILD_TESTS}")
    add_executable(compile_time_tests "tests/compile_time_tests.cpp")
    target_link_libraries(compile_time_tests PRIVATE khct::cpp_dyn)
 
-   # if("${KHCT_CPP_DYN_ENABLE_MODULE}")
-   #    add_executable(module_test "tests/test_module.cpp")
-   #    target_link_libraries(module_test PRIVATE khct::cpp_dyn::cpp_dyn_module Catch2::Catch2WithMain)
-   # endif()
+   if("${KHCT_CPP_DYN_ENABLE_MODULE}")
+      add_executable(module_test "tests/test_module.cpp")
+      target_link_libraries(module_test PRIVATE khct::cpp_dyn::cpp_dyn_module Catch2::Catch2WithMain)
+   endif()
 endif()

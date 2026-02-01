@@ -74,14 +74,17 @@ using append_tuple_types_t = append_tuple_types<Tuple1, Tuple2>::type;
 
 namespace khct {
 
-inline constexpr struct {
-} default_impl;
+namespace detail {
 
-inline constexpr struct {
-} trait;
+struct default_struct {};
+struct trait_struct {};
+struct auto_trait_struct {};
 
-inline constexpr struct {
-} auto_trait;
+} // namespace detail
+
+inline constexpr detail::default_struct default_impl{};
+inline constexpr detail::trait_struct trait{};
+inline constexpr detail::auto_trait_struct auto_trait{};
 
 namespace detail {
 
