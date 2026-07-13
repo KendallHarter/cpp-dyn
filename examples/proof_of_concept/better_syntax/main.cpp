@@ -125,6 +125,8 @@ struct caller {
       // Now call the function
       std::byte* const mem_ptr = reinterpret_cast<std::byte*>(&self);
       std::byte* const obj_ptr = mem_ptr - this_offset.bytes;
+      // I'm fairly certain that std::launder is needed here for standards compliance...
+      // but having it produces less optimal code?
       OwningClass* const obj = std::launder(reinterpret_cast<OwningClass*>(obj_ptr));
 
       return obj->vtable_.template get<vtable_index>()(obj->data_, std::forward<Ts>(vals)...);
