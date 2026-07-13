@@ -52,9 +52,7 @@ public:
    template<std::size_t I>
       requires(I < sizeof...(Ts))
    constexpr auto get() const noexcept -> const auto&
-   {
-      return data_.[:impl_members[I]:];
-   }
+   { return data_.[:impl_members[I]:]; }
 
    explicit constexpr tuple(const Ts&... vals) noexcept(noexcept(impl{vals...})) : data_{vals...} {}
 };
@@ -370,15 +368,11 @@ consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
 }
 
 consteval auto make_non_owning_dyn_trait(std::meta::info trait) noexcept -> std::meta::info
-{
-   return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, false).first);
-}
+{ return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, false).first); }
 
 template<owning_dyn_options Opt>
 consteval auto make_owning_dyn_trait(std::meta::info trait) -> std::meta::info
-{
-   return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, true).first);
-}
+{ return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, true).first); }
 
 template<std::meta::info F, typename Ptr, typename Class, typename... Args>
 constexpr auto produce_func_ptr
@@ -646,9 +640,7 @@ struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
    explicit constexpr owning_dyn_trait(ToStore&& obj) noexcept(
       Opt.stack_size == 0 && noexcept(new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)}))
       : data_{gen_data<ToStore>()}, funcs_{gen_funcs<std::remove_reference_t<ToStore>>()}
-   {
-      new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)};
-   }
+   { new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)}; }
 
    constexpr ~owning_dyn_trait()
    {
@@ -741,25 +733,19 @@ template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_
    requires(
       std::is_const_v<DynTrait> && (detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>))
 [[nodiscard]] constexpr auto dyn(const ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
-{
-   return non_owning_dyn_trait<DynTrait, Opt>{ptr};
-}
+{ return non_owning_dyn_trait<DynTrait, Opt>{ptr}; }
 
 template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_for<DynTrait>, typename ToStore>
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
 [[nodiscard]] constexpr auto dyn(ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
-{
-   return non_owning_dyn_trait<DynTrait, Opt>{ptr};
-}
+{ return non_owning_dyn_trait<DynTrait, Opt>{ptr}; }
 
 template<typename DynTrait, owning_dyn_options Opt = default_owning_opt_for<DynTrait>, typename ToStore>
    requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, std::remove_reference_t<ToStore>>)
 [[nodiscard]] constexpr auto
    owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
       -> owning_dyn_trait<DynTrait, Opt>
-{
-   return owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)};
-}
+{ return owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}; }
 
 } // namespace khct
 

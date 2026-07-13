@@ -6,8 +6,9 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(KHCT_CPP_DYN_BUILD_TESTS "Build tests for the library")
-option(KHCT_CPP_DYN_ENABLE_MODULE "Enable building module files")
+option(KHCT_CPP_DYN_BUILD_TESTS "Build tests for the library" FALSE)
+option(KHCT_CPP_DYN_ENABLE_MODULE "Enable building module files" FALSE)
+option(KHCT_CPP_DYN_BUILD_POC "Build proof of concept demonstrations" FALSE)
 
 add_library(cpp_dyn INTERFACE)
 
@@ -57,4 +58,9 @@ if("${KHCT_CPP_DYN_BUILD_TESTS}")
       add_executable(module_test "tests/test_module.cpp")
       target_link_libraries(module_test PRIVATE khct::cpp_dyn::cpp_dyn_module Catch2::Catch2WithMain)
    endif()
+endif()
+
+if("${KHCT_CPP_DYN_BUILD_POC}")
+   add_executable(better_syntax "examples/proof_of_concept/better_syntax/main.cpp")
+   target_link_libraries(better_syntax PRIVATE khct::cpp_dyn)
 endif()
