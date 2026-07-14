@@ -63,4 +63,7 @@ endif()
 if("${KHCT_CPP_DYN_BUILD_POC}")
    add_executable(better_syntax "examples/proof_of_concept/better_syntax/main.cpp")
    target_link_libraries(better_syntax PRIVATE khct::cpp_dyn)
+
+   add_executable(better_callers "examples/proof_of_concept/better_vtable_callers/main.cpp")
+   target_link_libraries(better_callers PRIVATE khct::cpp_dyn)
 endif()

@@ -127,6 +127,8 @@ struct caller {
       std::byte* const obj_ptr = mem_ptr - this_offset.bytes;
       // I'm fairly certain that std::launder is needed here for standards compliance...
       // but having it produces less optimal code?
+      // This appears to be a GCC optimizer bug with function pointers and launder,
+      // Clang appears to generate the same code both with and without launder in a reduced case.
       OwningClass* const obj = std::launder(reinterpret_cast<OwningClass*>(obj_ptr));
 
       return obj->vtable_.template get<vtable_index>()(obj->data_, std::forward<Ts>(vals)...);
