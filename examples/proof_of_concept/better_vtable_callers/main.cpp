@@ -102,7 +102,7 @@ struct caller
 
 struct tester {
    void void_func() {}
-   auto int_func() -> int { return 1; }
+   auto int_func(int x) -> int { return x; }
 };
 
 consteval
