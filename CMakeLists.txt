@@ -66,4 +66,7 @@ if("${KHCT_CPP_DYN_BUILD_POC}")
 
    add_executable(better_callers "examples/proof_of_concept/better_vtable_callers/main.cpp")
    target_link_libraries(better_callers PRIVATE khct::cpp_dyn)
+
+   add_executable(new_thing "include/khct/cpp_dyn_new_wip.cpp")
+   target_link_libraries(new_thing PRIVATE khct::cpp_dyn)
 endif()

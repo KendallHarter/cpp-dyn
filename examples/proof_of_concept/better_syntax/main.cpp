@@ -216,7 +216,7 @@ struct dyn : detail::base_dyn<Interface, dyn<Interface>> {
 
 } // namespace khct
 
-struct interface {
+struct trait {
    auto get_x() -> int;
    void set_x(int);
 };
@@ -243,12 +243,12 @@ struct weird_x {
 auto main() -> int
 {
    normal_x a;
-   khct::dyn<interface> test1{&a};
+   khct::dyn<trait> test1{&a};
    test1.set_x(10);
    assert(test1.get_x() == 10);
 
    weird_x b;
-   khct::dyn<interface> test2{&b};
+   khct::dyn<trait> test2{&b};
    test2.set_x(10);
    test2.set_x(20);
    assert(test2.get_x() == 10 + 20);

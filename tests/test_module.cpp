@@ -4,7 +4,8 @@
 import khct.cpp_dyn;
 
 // Because of module weirdness with GCC(?) need to include the headers first
-// but trying to include test_common.hpp means we aren't using the module or khct namespace is undefined
+// but trying to include test_common.hpp means we aren't using the module or khct namespace is
+// undefined
 // ...so the best way to fix this is to copy/paste
 
 struct[[= khct::auto_trait]] noise_trait {

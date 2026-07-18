@@ -69,3 +69,6 @@ Compilation errors are a nightmare.
 No default implementations (for now?).
 
 Templates are not supported and never will be as it is unimplementable.
+
+`vararg` functions are not supported, and are likely impossible to support
+in a standards compliant way.
