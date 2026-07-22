@@ -4,45 +4,16 @@ There are two different primary dyn trait structs, owning and non-owning:
 ```cpp
 template<
    typename Trait,
-   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<Trait>>
-struct khct::non_owning_dyn_trait;
+   non_owning_dyn_options Opt = {}>
+struct khct::dyn;
 
 template<
    typename Trait,
-   owning_dyn_options Opt = khct::default_owning_opt_for<DynTrait>>
-struct khct::owning_dyn_trait;
+   owning_dyn_options Opt = {}>
+struct khct::owning_dyn;
 ```
 
 The `non_owning_dyn_options` and `owning_dyn_options` are described [here](#dyn-trait-struct-options).
-
-There are two overload sets for creating instances of these structs
-(with noexcept specifiers omitted):
-
-```cpp
-template<
-   typename DynTrait,
-   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
-   typename ToStore>
-constexpr auto khct::dyn(const ToStore* ptr)
-   -> non_owning_dyn_trait<DynTrait, Opt>;
-
-template<
-   typename DynTrait,
-   non_owning_dyn_options Opt = khct::default_non_owning_opt_for<DynTrait>,
-   typename ToStore>
-constexpr auto khct::dyn(ToStore* ptr)
-   -> non_owning_dyn_trait<DynTrait, Opt>;
-
-template<
-   typename DynTrait,
-   owning_dyn_options Opt = khct::default_owning_opt_for<DynTrait>,
-   typename ToStore>
-constexpr auto khct::owning_dyn(ToStore&& to_store)
-   -> owning_dyn_trait<DynTrait, Opt>;
-```
-
-`khct::dyn` is used to create non-owning dyn traits and `khct::owning_dyn` is used to create
-owning dyn traits.  Generally, only the first parameter needs to be supplied.
 
 These are used as such (assuming `my_trait` is a trait and `my_obj` is a value that conforms to it):
 
@@ -93,14 +64,14 @@ struct [[=khct::auto_trait]] interface2 {
 };
 
 // Using the first interface
-int take_interface1(khct::non_owning_dyn_trait<my_interface> obj) noexcept
+int take_interface1(khct::dyn<my_interface> obj) noexcept
 {
    obj.call(obj.set_data, 20);
    return obj.call(obj.get_data);
 }
 
 // Using the second interface
-int take_interface2(khct::non_owning_dyn_trait<interface2> obj) noexcept
+int take_interface2(khct::dyn<interface2> obj) noexcept
 {
    obj.call(obj.set_data, 40);
    return obj.call(obj.get_data);
@@ -141,21 +112,25 @@ struct [[=khct::trait]] my_interface {
 ```cpp
 namespace khct {
 
-struct non_owning_dyn_options {
+struct non_owning_options {
    // If the vtable should be stored directly in the object
    // (if true) or if the object should store a pointer to it
-   bool store_vtable_inline;
+   bool store_vtable_inline = false;
 };
 
-struct owning_dyn_options {
+struct owning_options {
    // If the vtable should be stored directly in the object
    // (if true) or if the object should store a pointer to it
-   bool store_vtable_inline;
-
-   // The number of bytes to store objects into.
-   // If this is 0, dynamically allocate objects
-   // instead of locally storing them.
-   std::size_t stack_size;
+   bool store_vtable_inline = false;
+   
+   // The stack size to allocate for owned objects
+   std::size_t impl_storage_size = 0;
+   
+   // If dynamic allocation is allowed to occur
+   bool allow_dynamic_allocs = true;
+   
+   // Assume that allocation cannot fail and is noexcept
+   bool allocation_is_noexcept = false;
 };
 
 }

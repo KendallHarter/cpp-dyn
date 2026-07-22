@@ -1,34 +1,33 @@
+// TODO (potential):
+//    - Allow non-exact interface function matches (implicit conversion for arguments/return)
+//    - Add an annotation that allows configuring the above
+//    - Allow each function to override the interface-wide setting
+//    - Add copying to owning dyn interface (with vtable entry)
+
 #ifndef KHCT_CPP_DYN_HPP
 #define KHCT_CPP_DYN_HPP
 
 #include <algorithm>
-#include <bit>
-#include <cassert>
-#include <charconv>
+#include <concepts>
 #include <cstdint>
+#include <flat_map>
+#include <flat_set>
 #include <functional>
-#include <initializer_list>
-#include <limits>
 #include <memory>
 #include <meta>
+#include <optional>
 #include <ranges>
-#include <type_traits>
+
+// This is needed for some optimizations that should always be inlined anyways
+#if defined(__clang__)
+   #define KHCT_DYN_ALWAYS_INLINE [[clang::always_inline]]
+#elif defined(__GNUC__) || defined(__GNUG__)
+   #define KHCT_DYN_ALWAYS_INLINE [[gnu::always_inline]]
+#elif defined(_MSC_VER)
+   #define KHCT_DYN_ALWAYS_INLINE [[msvc::always_inline]]
+#endif
 
 namespace khct::detail {
-
-template<typename... T>
-struct overload_set : T... {
-   using T::operator()...;
-};
-
-template<std::size_t I>
-inline constexpr std::array<char, 16> tuple_name = [] {
-   std::array<char, 16> to_ret;
-   std::ranges::fill(to_ret, '\0');
-   to_ret[0] = 'm';
-   std::to_chars(to_ret.data() + 1, to_ret.data() + to_ret.size(), I);
-   return to_ret;
-}();
 
 template<typename... Ts>
 struct tuple {
@@ -38,7 +37,7 @@ private:
    {
       []<std::size_t... Is>(std::index_sequence<Is...>) {
          std::meta::define_aggregate(
-            ^^impl, {std::meta::data_member_spec(^^Ts, {.name = tuple_name<Is>.data(), .no_unique_address = true})...});
+            ^^impl, {std::meta::data_member_spec(^^Ts, {.name = "_", .no_unique_address = true})...});
       }(std::index_sequence_for<Ts...>{});
    }
 
@@ -54,699 +53,758 @@ public:
    constexpr auto get() const noexcept -> const auto&
    { return data_.[:impl_members[I]:]; }
 
+   static constexpr auto size = sizeof...(Ts);
+
    explicit constexpr tuple(const Ts&... vals) noexcept(noexcept(impl{vals...})) : data_{vals...} {}
 };
 
-template<typename Tuple1, typename Tuple2>
-struct append_tuple_types;
-
-template<typename... Ts1, typename... Ts2>
-struct append_tuple_types<tuple<Ts1...>, tuple<Ts2...>> {
-   using type = tuple<Ts1..., Ts2...>;
-};
-
-template<typename Tuple1, typename Tuple2>
-using append_tuple_types_t = append_tuple_types<Tuple1, Tuple2>::type;
-
-} // namespace khct::detail
-
-namespace khct {
-
-namespace detail {
-
-struct default_struct {};
-struct trait_struct {};
-struct auto_trait_struct {};
-
-} // namespace detail
-
-inline constexpr detail::default_struct default_impl{};
-inline constexpr detail::trait_struct trait{};
-inline constexpr detail::auto_trait_struct auto_trait{};
-
-namespace detail {
-
-template<typename T>
-   requires(!annotations_of_with_type(^^T, ^^decltype(trait)).empty())
-struct impl_for_struct {};
-
-template<typename T>
-concept is_auto_trait = !annotations_of_with_type(^^T, ^^decltype(auto_trait)).empty();
-
-template<typename Trait, typename Type>
-concept is_trait_impl_for = !annotations_of_with_type(^^Trait, ^^decltype(trait)).empty()
-                         && !annotations_of_with_type(^^Type, ^^detail::impl_for_struct<Trait>).empty();
-
-} // namespace detail
-
-template<typename T>
-   requires(!std::meta::annotations_of_with_type(^^T, ^^decltype(trait)).empty())
-inline constexpr auto impl_for = detail::impl_for_struct<T>{};
-
-struct non_owning_dyn_options {
-   bool store_vtable_inline;
-};
-
-struct owning_dyn_options {
-   bool store_vtable_inline;
-   /// @brief The number of bytes to store objects into.
-   ///        If this is 0, dynamically allocate objects instead of locally storing them.
-   std::size_t stack_size;
-};
-
-template<typename Trait, non_owning_dyn_options Opt>
-struct non_owning_dyn_trait;
-
-template<typename Trait, owning_dyn_options Opt>
-struct owning_dyn_trait;
-
-namespace detail {
-
-template<std::meta::info... Infos>
-struct outer {
-   struct inner;
-   consteval { std::meta::define_aggregate(^^inner, {Infos...}); }
-};
-
-template<std::meta::info... Infos>
-using cls = outer<Infos...>::inner;
-
-template<typename RetType, typename... Args>
-using func_ptr_maker = RetType (*)(Args...);
-
-template<typename RetType, typename... Args>
-using noexcept_func_ptr_maker = RetType (*)(Args...) noexcept;
-
-consteval auto member_func_to_non_member_func(std::meta::info f, std::meta::info trait, bool skip_first = false)
-   -> std::meta::info
+template<typename TupleTypeTo, typename TupleTypeFrom>
+constexpr TupleTypeTo transform_tuple(const TupleTypeFrom& from) noexcept
 {
-   std::vector<std::meta::info> infos;
-   if (std::meta::is_function_template(f)) {
-      return member_func_to_non_member_func(std::meta::substitute(f, {trait}), trait, true);
-   }
-   infos.push_back(std::meta::return_type_of(f));
-   if (std::meta::is_const(f) || std::meta::is_static_member(f)) {
-      infos.push_back(^^const void*);
-   }
-   else {
-      infos.push_back(^^void*);
-   }
-   for (const auto i : std::meta::parameters_of(f) | std::views::drop(skip_first)) {
-      infos.push_back(std::meta::type_of(i));
-   }
-   return std::meta::substitute(std::meta::is_noexcept(f) ? ^^noexcept_func_ptr_maker : ^^func_ptr_maker, infos);
+   static constexpr auto impl = []<typename... Ts, typename... Us>(const tuple<Us...>& from, tuple<Ts...>*) noexcept {
+      return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+         return tuple<Ts...>{from.template get<Is>()...};
+      }(std::index_sequence_for<Ts...>{});
+   };
+   return impl(from, static_cast<TupleTypeTo*>(nullptr));
 }
 
-consteval auto get_sorted_funcs_by_name(std::meta::info c) -> std::vector<std::meta::info>
+template<std::meta::info F, typename Ptr, typename ClassPtr, typename... Args>
+constexpr auto vtable_entry_ptr = +[](Ptr c, Args&&... args) noexcept(noexcept(
+                                      static_cast<ClassPtr>(c)->[:F:](std::forward<Args>(args)...))) -> decltype(auto) {
+   return static_cast<ClassPtr>(c)->[:F:](std::forward<Args>(args)...);
+};
+
+template<std::meta::info F, typename... Args>
+constexpr auto static_vtable_entry_ptr
+   = +[](const void*, Args&&... args) noexcept(noexcept([:F:](std::forward<Args>(args)...))) -> decltype(auto) {
+   return [:F:](std::forward<Args>(args)...);
+};
+
+template<typename T>
+constexpr auto vtable_deleter_for
+   = +[](void* ptr) noexcept(noexcept(static_cast<T*>(ptr)->~T())) { static_cast<T*>(ptr)->~T(); };
+
+consteval auto get_trait_funcs(std::meta::info c) -> std::vector<std::meta::info>
 {
-   const auto non_cv_c = std::meta::remove_const(std::meta::remove_volatile(c));
+   auto non_cv_c = std::meta::remove_const(std::meta::remove_volatile(c));
    auto f = std::meta::members_of(non_cv_c, std::meta::access_context::current())
-          | std::views::filter([](auto x) { return std::meta::is_function_template(x) || std::meta::is_function(x); })
-          | std::views::filter(std::not_fn(std::meta::is_constructor))
+          | std::views::filter(std::meta::is_function) | std::views::filter(std::not_fn(std::meta::is_constructor))
           | std::views::filter(std::not_fn(std::meta::is_operator_function))
           | std::views::filter(std::not_fn(std::meta::is_destructor)) | std::ranges::to<std::vector>();
-
-   std::ranges::sort(f, {}, [](auto x) { return std::meta::identifier_of(x); });
+   std::ranges::sort(f, {}, std::meta::identifier_of);
 
    return f;
 }
 
-consteval auto partition_sorted_funcs_by_name(const std::span<const std::meta::info> funcs)
-   -> std::vector<std::vector<std::meta::info>>
+consteval auto is_static_or_const_qualified_function(std::meta::info func) -> bool
 {
-   if (funcs.empty()) {
-      return {};
+   if (std::meta::is_static_member(func)) {
+      return true;
    }
-   std::vector<std::vector<std::meta::info>> to_ret;
-   to_ret.emplace_back();
 
-   auto cur_name = std::meta::identifier_of(funcs[0]);
+   const auto args = std::meta::parameters_of(func);
+   if (!args.empty() && std::meta::is_explicit_object_parameter(args.front())) {
+      auto self_arg_type = std::meta::type_of(args.front());
+      return std::meta::is_const_type(std::meta::remove_reference(self_arg_type));
+   }
 
-   for (const auto f : funcs) {
-      if (cur_name != std::meta::identifier_of(f)) {
-         to_ret.emplace_back();
-         cur_name = std::meta::identifier_of(f);
+   return std::meta::is_const(func);
+}
+
+consteval auto params_without_explicit_this(std::meta::info func) -> std::vector<std::meta::info>
+{
+   const auto params = std::meta::parameters_of(func);
+   if (!params.empty()) {
+      if (std::meta::is_explicit_object_parameter(params.front())) {
+         return params | std::views::drop(1) | std::ranges::to<std::vector>();
       }
-      to_ret.back().push_back(f);
+   }
+   return params;
+}
+
+consteval auto make_vtable_entry(std::meta::info impl_func) -> std::meta::info
+{
+   const auto impl_args = std::meta::parameters_of(impl_func);
+
+   // static function; no special handling needed
+   if (std::meta::is_static_member(impl_func)) {
+      return std::meta::substitute(
+         ^^static_vtable_entry_ptr,
+         std::views::concat(
+            std::views::single(std::meta::reflect_constant(impl_func)),
+            impl_args | std::views::transform(std::meta::type_of)));
+   }
+
+   // member function; need to check if the first parameter is an explicit
+   // object parameter and handle accordingly if so
+   if (!impl_args.empty() && std::meta::is_explicit_object_parameter(impl_args.front())) {
+      auto self_arg_type = std::meta::type_of(impl_args.front());
+      const auto is_const = std::meta::is_const_type(std::meta::remove_reference(self_arg_type));
+
+      return std::meta::substitute(
+         ^^vtable_entry_ptr,
+         std::views::concat(
+            std::array{
+               std::meta::reflect_constant(impl_func),
+               is_const ? ^^const void* : ^^void*,
+               std::meta::add_pointer(is_const ? std::meta::add_const(self_arg_type) : self_arg_type),
+            },
+            impl_args | std::views::drop(1) | std::views::transform(std::meta::type_of)));
+   }
+
+   // normal member function
+   const auto is_const = std::meta::is_const(impl_func);
+   auto class_type = std::meta::parent_of(impl_func);
+   return std::meta::substitute(
+      ^^vtable_entry_ptr,
+      std::views::concat(
+         std::array{
+            std::meta::reflect_constant(impl_func),
+            is_const ? ^^const void* : ^^void*,
+            std::meta::add_pointer(is_const ? std::meta::add_const(class_type) : class_type)},
+         impl_args | std::views::transform(std::meta::type_of)));
+}
+
+consteval auto get_matching_impl_func(std::meta::info trait_func, const std::span<const std::meta::info> impl_funcs)
+   -> std::optional<std::meta::info>
+{
+   const auto iter = std::ranges::find_if(impl_funcs, [&](auto x) {
+      return std::meta::identifier_of(x) == std::meta::identifier_of(trait_func)
+          && std::meta::is_same_type(std::meta::return_type_of(x), std::meta::return_type_of(trait_func))
+          && params_without_explicit_this(x).size() == params_without_explicit_this(trait_func).size()
+          && is_static_or_const_qualified_function(x) == is_static_or_const_qualified_function(trait_func)
+          && std::ranges::all_of(
+                std::views::zip(params_without_explicit_this(x), params_without_explicit_this(trait_func)),
+                [](auto tup) {
+                   auto [a, b] = tup;
+                   return std::meta::is_same_type(std::meta::type_of(a), std::meta::type_of(b));
+                });
+   });
+   return iter == impl_funcs.end() ? std::optional<std::meta::info>{} : *iter;
+}
+
+template<std::meta::info Trait, std::meta::info ImplementingClass>
+consteval auto make_vtable() -> auto
+{
+   static constexpr auto trait_funcs = std::define_static_array(get_trait_funcs(Trait));
+   static constexpr auto impl_funcs = std::define_static_array(get_trait_funcs(ImplementingClass));
+
+   return []<std::size_t... Is>(std::index_sequence<Is...>) {
+      constexpr auto find_matching_impl_func = [](const std::size_t index) -> std::meta::info {
+         return *get_matching_impl_func(trait_funcs[index], impl_funcs);
+      };
+
+      return tuple{[:make_vtable_entry(find_matching_impl_func(Is)):]..., vtable_deleter_for<typename[:Trait:]>};
+   }(std::make_index_sequence<trait_funcs.size()>{});
+}
+
+template<typename T>
+using vtable_type = decltype(make_vtable<^^T, ^^T>());
+
+consteval auto partition_functions_by_name(std::meta::info cls)
+   -> std::flat_map<std::string_view, std::vector<std::meta::info>>
+{
+   std::flat_map<std::string_view, std::vector<std::meta::info>> to_ret;
+
+   for (const auto& f : get_trait_funcs(cls)) {
+      to_ret[std::meta::identifier_of(f)].push_back(f);
    }
 
    return to_ret;
 }
 
-// We don't need TraitClass, but have it to prevent passing other dyn_trait functions
-template<typename TraitClass, auto... Rest>
-struct func_caller;
+template<std::meta::info Trait, std::size_t Index, typename RetType, typename SelfPtr, typename... Args>
+struct base_caller_single_func {
+   KHCT_DYN_ALWAYS_INLINE static constexpr auto
+      call_with_vtable_and_ptr(const vtable_type<typename[:Trait:]>& vtable, SelfPtr ptr, Args&&... args) noexcept(
+         noexcept(vtable.template get<Index>()(ptr, std::forward<Args>(args)...))) -> RetType
+   { return vtable.template get<Index>()(ptr, std::forward<Args>(args)...); }
 
-template<bool InlineVtable, typename Class, std::size_t I>
-constexpr auto get_vtable(auto* c) noexcept -> auto&
-{
-   static constexpr bool is_const = std::is_const_v<std::remove_pointer_t<decltype(c)>>;
-   using cast_type = std::conditional_t<is_const, const Class*, Class*>;
-   if constexpr (InlineVtable) {
-      return static_cast<cast_type>(c)->funcs_.template get<I>();
-   }
-   else {
-      return static_cast<cast_type>(c)->funcs_->template get<I>();
-   }
-}
-
-// This specialization is used for single functions (non-overloaded)
-template<typename TraitClass, std::size_t FuncIndex, bool IsOwning>
-struct func_caller<TraitClass, FuncIndex, IsOwning> {
-   template<typename Trait, non_owning_dyn_options Opt>
-   friend struct ::khct::non_owning_dyn_trait;
-
-   template<typename Trait, owning_dyn_options Opt>
-   friend struct ::khct::owning_dyn_trait;
-
-private:
-   template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto
-      call(const void* c, Args&&... args) noexcept(noexcept(get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(
-         static_cast<const Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
-   {
-      const auto* const ptr = static_cast<const Class*>(c);
-      return get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(ptr->data(), std::forward<Args>(args)...);
-   }
-
-   template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto
-      call(void* c, Args&&... args) noexcept(noexcept(get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(
-         static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
-   {
-      auto* const ptr = static_cast<Class*>(c);
-      return get_vtable<InlineVtable, Class, FuncIndex + IsOwning>(c)(ptr->data(), std::forward<Args>(args)...);
-   }
+   using self = base_caller_single_func;
+   constexpr auto operator()(
+      this std::conditional_t<std::is_const_v<std::remove_pointer_t<SelfPtr>>, const self&, self&>,
+      Args&&... args) noexcept(noexcept(std::declval<const vtable_type<typename[:Trait:]>&>()
+                                           .template get<Index>()(
+                                              std::declval<SelfPtr>(), std::forward<Args>(args)...))) -> RetType;
 };
 
-template<std::size_t Index, typename FuncType>
-struct func_caller_helper;
+// clang-format off
+template<std::meta::info Trait, std::size_t Index, std::meta::info Func>
+struct base_caller_single
+   :
+   [:
+      std::meta::substitute(
+         ^^base_caller_single_func,
+         std::views::concat(
+            std::array{
+               std::meta::reflect_constant(Trait),
+               std::meta::reflect_constant(Index),
+               std::meta::return_type_of(Func),
+               is_static_or_const_qualified_function(Func) ? ^^const void* : ^^void*
+            },
+            params_without_explicit_this(Func) | std::views::transform(std::meta::type_of)
+         )
+      )
+   :] {};
+// clang-format on
 
-template<std::size_t Index, typename RetType, typename... Args>
-struct func_caller_helper<Index, RetType (*)(Args...)> {
-   static consteval auto operator()(Args...) noexcept -> std::integral_constant<std::size_t, Index>;
+// public so that ::khct::call can access everything in a requires clause
+template<std::meta::info Trait, tuple<std::size_t, std::meta::info>... Funcs>
+struct base_caller : base_caller_single<Trait, Funcs.get<0>(), Funcs.get<1>()>... {
+   using base_caller_single<Trait, Funcs.get<0>(), Funcs.get<1>()>::call_with_vtable_and_ptr...;
+   using base_caller_single<Trait, Funcs.get<0>(), Funcs.get<1>()>::operator()...;
 };
 
-template<std::size_t Index, typename RetType, typename... Args>
-struct func_caller_helper<Index, RetType (*)(Args...) noexcept> {
-   static consteval auto operator()(Args...) noexcept -> std::integral_constant<std::size_t, Index>;
-};
+// private so that users can't access the implementation
+template<std::meta::info Trait, tuple<std::size_t, std::meta::info>... Funcs>
+struct private_base_caller : private base_caller<Trait, Funcs...> {};
 
-// This specialization is used for overload sets with the specified name
-template<typename TraitClass, std::size_t StartIndex, const char* Name, bool IsOwning>
-struct func_caller<TraitClass, StartIndex, Name, IsOwning> {
-   template<typename Trait, non_owning_dyn_options Opt>
-   friend struct ::khct::non_owning_dyn_trait;
-
-   template<typename Trait, owning_dyn_options Opt>
-   friend struct ::khct::owning_dyn_trait;
-
-private:
-   static constexpr std::span<const std::meta::info> funcs = []() consteval -> std::span<const std::meta::info> {
-      static constexpr auto funcs = std::define_static_array(get_sorted_funcs_by_name(^^TraitClass));
-      const auto sorted_funcs = partition_sorted_funcs_by_name(funcs);
-
-      for (const auto& f : sorted_funcs) {
-         if (std::meta::identifier_of(f.front()) == Name) {
-            return std::define_static_array(f);
-         }
-      }
-
-      return {};
-   }();
-
-   static_assert(!funcs.empty(), "No matching function name");
-
-   static constexpr auto get_indexer = []() consteval {
-      return []<std::size_t... I>(std::index_sequence<I...>) {
-         return ::khct::detail::overload_set{func_caller_helper<
-            StartIndex + I + IsOwning,
-            typename[:member_func_to_non_member_func(funcs[I], ^^TraitClass):]>{}...};
-      }(std::make_index_sequence<funcs.size()>{});
-   }();
-
-   template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto call(const void* c, Args&&... args) noexcept(
-      noexcept(get_vtable<
-               InlineVtable,
-               Class,
-               decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
-         static_cast<const Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
-   {
-      const auto* const ptr = static_cast<const Class*>(c);
-      return get_vtable<
-         InlineVtable,
-         Class,
-         decltype(get_indexer(std::declval<const Class*>(), std::declval<Args>()...))::value>(c)(
-         ptr->data(), std::forward<Args>(args)...);
-   }
-
-   template<bool InlineVtable, typename Class, typename... Args>
-   static constexpr auto call(void* c, Args&&... args) noexcept(noexcept(
-      get_vtable<InlineVtable, Class, decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
-         static_cast<Class*>(c)->data(), std::forward<Args>(args)...))) -> decltype(auto)
-   {
-      auto* const ptr = static_cast<Class*>(c);
-
-      return get_vtable<
-         InlineVtable,
-         Class,
-         decltype(get_indexer(std::declval<Class*>(), std::declval<Args>()...))::value>(c)(
-         ptr->data(), std::forward<Args>(args)...);
-   }
-};
-
-consteval auto get_members_and_tuple_type(std::meta::info trait, bool is_owned)
-   -> std::pair<std::vector<std::meta::info>, std::vector<std::meta::info>>
-{
-   const auto funcs_by_name = partition_sorted_funcs_by_name(get_sorted_funcs_by_name(trait));
-   std::vector<std::meta::info> members;
-   std::vector<std::meta::info> func_ptrs;
-   std::size_t index = 0;
-   for (const auto funcs : funcs_by_name) {
-      if (funcs.size() == 1) {
-         // No overloads, just a single function
-         const auto f = funcs.front();
-         // if (std::meta::is_function_template(f)) {
-         //    // const auto is_default_impl
-         //    //    = !annotations_of_with_type(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
-         //    // assert(is_default_impl && "Templated functions can only be used for default implementations");
-         // }
-         members.push_back(
-            std::meta::reflect_constant(
-               std::meta::data_member_spec(
-                  std::meta::substitute(
-                     ^^func_caller, {trait, std::meta::reflect_constant(index), std::meta::reflect_constant(is_owned)}),
-                  {.name = std::meta::identifier_of(f), .no_unique_address = true})));
-         index += 1;
-         func_ptrs.push_back(member_func_to_non_member_func(f, trait));
-      }
-      else {
-         // Oh no, there's an overload; gotta handle it
-         for (const auto& f : funcs) {
-            // if (std::meta::is_function_template(f)) {
-            //    const auto is_default_impl
-            //       = !annotations_of_with_type(std::meta::substitute(f, {trait}), ^^decltype(default_impl)).empty();
-            //    assert(is_default_impl && "Templated functions can only be used for default implementations");
-            // }
-            func_ptrs.push_back(member_func_to_non_member_func(f, trait));
-         }
-         members.push_back(
-            std::meta::reflect_constant(
-               std::meta::data_member_spec(
-                  std::meta::substitute(
-                     ^^func_caller,
-                     {trait,
-                      std::meta::reflect_constant(index),
-                      std::meta::reflect_constant_string(std::meta::identifier_of(funcs.front())),
-                      std::meta::reflect_constant(is_owned)}),
-                  {.name = std::meta::identifier_of(funcs.front()), .no_unique_address = true})));
-         index += funcs.size();
-      }
-   }
-   return {members, func_ptrs};
-}
-
-consteval auto make_non_owning_dyn_trait(std::meta::info trait) noexcept -> std::meta::info
-{ return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, false).first); }
-
-template<owning_dyn_options Opt>
-consteval auto make_owning_dyn_trait(std::meta::info trait) -> std::meta::info
-{ return std::meta::substitute(^^cls, get_members_and_tuple_type(trait, true).first); }
-
-template<std::meta::info F, typename Ptr, typename Class, typename... Args>
-constexpr auto produce_func_ptr
-   = +[](Ptr c, Args... args) noexcept(noexcept(static_cast<Class>(c)->[:F:](args...))) -> decltype(auto) {
-   return static_cast<Class>(c)->[:F:](args...);
-};
-
-template<std::meta::info F, typename Trait, typename Ptr, typename Class, typename... Args>
-constexpr auto produce_default_func_ptr
-   = +[](Ptr c, Args... args) noexcept(noexcept(Trait{}.[:F:](*static_cast<Class>(c), args...))) -> decltype(auto) {
-   return Trait{}.[:F:](*static_cast<Class>(c), args...);
-};
-
-template<std::meta::info F, typename... Args>
-constexpr auto produce_default_static_func_ptr
-   = +[](const void*, Args... args) noexcept(noexcept([:F:](args...))) -> decltype(auto) { return [:F:](args...); };
-
-template<typename Trait, typename ToStore, bool IsOwned>
-constexpr auto make_dyn_trait_pointers(void (*deleter)(void*) noexcept = nullptr) -> auto
-{
-   static constexpr auto func_ptrs = []() consteval {
-      auto func_ptrs = get_members_and_tuple_type(^^Trait, IsOwned).second;
-      if (IsOwned) {
-         func_ptrs.insert(func_ptrs.begin(), ^^void (*)(void*) noexcept);
-      }
-      return std::define_static_array(func_ptrs);
-   }();
-   static constexpr auto trait_funcs = []() consteval {
-      auto trait_funcs = get_sorted_funcs_by_name(^^Trait);
-      if (IsOwned) {
-         trait_funcs.insert(trait_funcs.begin(), ^^void (*)(void*) noexcept);
-      }
-      return std::define_static_array(trait_funcs);
-   }();
-
-   static constexpr auto to_store_func = std::define_static_array(get_sorted_funcs_by_name(^^ToStore));
-
-   using ret_type = [:std::meta::substitute(^^detail::tuple, func_ptrs):];
-
-   const auto make_ith_member = [&]<std::size_t I> noexcept {
-      if constexpr (I == 0 && IsOwned) {
-         return deleter;
-      }
-      else {
-         static constexpr auto produce_func_ptr_from_info = [](std::meta::info func_info, std::meta::info sub_into) {
-            const auto is_default = sub_into == ^^produce_default_func_ptr;
-            std::vector<std::meta::info> args;
-            args.push_back(std::meta::reflect_constant(func_info));
-            if (is_default) {
-               args.push_back(^^Trait);
-            }
-            if (std::meta::is_const(func_info) || std::meta::is_static_member(func_info)) {
-               args.push_back(^^const void*);
-               args.push_back(^^const ToStore*);
-            }
-            else {
-               args.push_back(^^void*);
-               args.push_back(^^ToStore*);
-            }
-            for (const auto arg :
-                 std::meta::parameters_of(func_info) | std::views::drop(static_cast<int>(is_default))) {
-               args.push_back(std::meta::type_of(arg));
-            }
-
-            return std::meta::substitute(sub_into, args);
-         };
-         template for (constexpr auto f : to_store_func)
-         {
-            // f needs to be captured here in GCC - not sure if this is a bug?
-            static constexpr bool func_signatures_match = [&f] consteval {
-               if constexpr (!std::meta::is_function_template(f)) {
-                  const auto cur_func = std::meta::is_function_template(trait_funcs[I])
-                                         ? std::meta::substitute(trait_funcs[I], {^^ToStore})
-                                         : trait_funcs[I];
-                  const auto params1 = std::meta::parameters_of(f);
-                  const std::vector<std::meta::info> params2
-                     = std::meta::parameters_of(cur_func)
-                     | std::views::drop(static_cast<int>(cur_func != trait_funcs[I])) | std::ranges::to<std::vector>();
-
-                  if (params1.size() != params2.size()) {
-                     return false;
-                  }
-
-                  for (std::size_t i = 0; i < params1.size(); ++i) {
-                     if (std::meta::type_of(params1[i]) != std::meta::type_of(params2[i])) {
-                        return false;
-                     }
-                  }
-
-                  // noexcept can decay to non-noexcept
-                  return std::meta::return_type_of(f) == std::meta::return_type_of(cur_func)
-                      && std::meta::is_const(f) == std::meta::is_const(cur_func)
-                      && (std::meta::is_noexcept(f) == std::meta::is_noexcept(cur_func)
-                          || !std::meta::is_noexcept(cur_func));
+// clang-format off
+template<typename Trait, std::size_t StartIndex, std::meta::info... Funcs>
+struct caller
+   :
+   [:
+      std::meta::substitute(
+         ^^private_base_caller,
+         std::views::concat(
+            std::views::single(
+               std::meta::reflect_constant(^^Trait)
+            ),
+            std::views::enumerate(std::array{Funcs...})
+               | std::views::transform([](auto pair) {
+                  const auto [i, x] = pair;
+                  return std::meta::reflect_constant(tuple{StartIndex + i, x});
                }
-
-               return false;
-            }();
-            if constexpr (
-               std::meta::identifier_of(f) == std::meta::identifier_of(trait_funcs[I]) && func_signatures_match) {
-               return [:produce_func_ptr_from_info(f, ^^produce_func_ptr):];
-            }
-         }
-         // Default implementation
-         static constexpr auto f = trait_funcs[I];
-         if constexpr (std::meta::is_function_template(f)) {
-            static constexpr auto f_sub = std::meta::substitute(f, {^^ToStore});
-            static constexpr auto is_default = !annotations_of_with_type(f_sub, ^^decltype(default_impl)).empty();
-            static_assert(is_default, "Function templates must be default implementations");
-
-            return [:produce_func_ptr_from_info(f_sub, ^^produce_default_func_ptr):];
-         }
-         else {
-            static constexpr auto is_default = !annotations_of_with_type(f, ^^decltype(default_impl)).empty();
-            if constexpr (is_default && std::meta::is_static_member(trait_funcs[I])) {
-               static constexpr auto to_ret = []() {
-                  std::vector<std::meta::info> args;
-                  args.push_back(std::meta::reflect_constant(f));
-                  for (const auto arg : std::meta::parameters_of(f)) {
-                     args.push_back(arg);
-                  }
-                  return std::meta::substitute(^^produce_default_static_func_ptr, args);
-               }();
-               return [:to_ret:];
-            }
-         }
-         throw "invalid name/no default";
-      }
-   };
-
-   const auto make_func_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>) noexcept -> ret_type {
-      return ret_type{make_ith_member.template operator()<Is>()...};
-   };
-
-   return make_func_ptrs(std::make_index_sequence<trait_funcs.size()>{});
-}
+            )
+         )
+      )
+   :] {};
+// clang-format on
 
 template<typename Trait>
-using non_owning_dyn_trait_impl = [:make_non_owning_dyn_trait(^^Trait):];
+struct caller_holder_generate {
+   struct type;
 
-template<typename Trait, owning_dyn_options Opt>
-using owning_dyn_trait_impl = [:make_owning_dyn_trait<Opt>(^^Trait):];
+   consteval
+   {
+      std::flat_map<std::string_view, std::vector<std::meta::info>> caller_template_args;
+
+      const auto funcs = partition_functions_by_name(^^Trait);
+
+      std::size_t i = 0;
+      for (const auto& [name, named_funcs] : funcs) {
+         caller_template_args[name]
+            = std::views::concat(
+                 std::array{^^Trait, std::meta::reflect_constant(i)},
+                 named_funcs | std::views::transform([](auto x) { return std::meta::reflect_constant(x); }))
+            | std::ranges::to<std::vector>();
+         i += named_funcs.size();
+      }
+
+      std::meta::define_aggregate(^^type, caller_template_args | std::views::transform([](auto x) {
+                                             return data_member_spec(
+                                                std::meta::substitute(^^caller, x.second),
+                                                {.name = x.first, .no_unique_address = true});
+                                          }));
+   }
+};
+
+struct trait_struct {};
+struct auto_trait_struct {};
+
+// TODO: Add display_string_of to show violating function
+consteval auto is_valid_trait(std::meta::info raw_trait) -> bool
+{
+   const auto trait = std::meta::remove_const(raw_trait);
+
+   if (!std::meta::is_complete_type(trait)) {
+      throw std::meta::exception{"Traits must be complete types", trait};
+   }
+
+   if (!std::meta::is_class_type(trait)) {
+      throw std::meta::exception{"Traits must be class types", trait};
+   }
+
+   if (!std::meta::bases_of(trait, std::meta::access_context::unchecked()).empty()) {
+      throw std::meta::exception{"Traits must not have bases", trait};
+   }
+
+   if (
+      !std::meta::static_data_members_of(trait, std::meta::access_context::unchecked()).empty()
+      || !std::meta::nonstatic_data_members_of(trait, std::meta::access_context::unchecked()).empty()) {
+      throw std::meta::exception{"Traits must not have any data members", trait};
+   }
+
+   const auto members = std::meta::members_of(trait, std::meta::access_context::unchecked());
+
+   const auto funcs = members | std::views::filter(std::meta::is_function) | std::ranges::to<std::vector>();
+
+   if (!std::ranges::all_of(funcs, std::meta::is_public)) {
+      throw std::meta::exception{"Traits must have all public functions", trait};
+   }
+
+   if (
+      std::ranges::any_of(
+         funcs | std::views::filter(std::meta::is_special_member_function), std::meta::is_user_declared)) {
+      throw std::meta::exception{"Traits must not have user declared special member functions", trait};
+   }
+
+   if (!std::empty(funcs | std::views::filter(std::meta::is_function_template) | std::ranges::to<std::vector>())) {
+      throw std::meta::exception{"Traits must not have any function templates", trait};
+   }
+
+   const auto r_ref_funcs
+      = funcs | std::views::filter(std::meta::is_rvalue_reference_qualified) | std::ranges::to<std::vector>();
+   const auto r_ref_funcs2 = funcs | std::views::filter([](auto x) {
+                                const auto params = std::meta::parameters_of(x);
+                                return !params.empty() && std::meta::is_explicit_object_parameter(params.front())
+                                    && std::meta::is_rvalue_reference_type(std::meta::type_of(params.front()));
+                             })
+                           | std::ranges::to<std::vector>();
+   if (!r_ref_funcs.empty() || !r_ref_funcs2.empty()) {
+      throw std::meta::exception{"Traits must not have rvalue reference qualified functions", trait};
+   }
+
+   const auto value_funcs = funcs | std::views::filter([](auto x) {
+                               const auto params = std::meta::parameters_of(x);
+                               return !params.empty() && std::meta::is_explicit_object_parameter(params.front())
+                                   && !std::meta::is_reference_type(std::meta::type_of(params.front()));
+                            })
+                          | std::ranges::to<std::vector>();
+   if (!value_funcs.empty()) {
+      throw std::meta::exception{"Traits must not have explicit object parameters passed by value", trait};
+   }
+
+   // std::meta::is_vararg_function appears to be missing even though it's in the header?
+   // not sure what's going on here so skip it for now
+   // if (!std::empty(funcs | std::views::filter(std::meta::is_vararg_function) | std::ranges::to<std::vector>())) {
+   //    throw std::meta::exception{"Traits must not have vararg functions", trait};
+   // }
+
+   constexpr auto is_conv
+      = [](auto x) { return std::meta::is_conversion_function(x) || std::meta::is_conversion_function_template(x); };
+   if (!std::empty(funcs | std::views::filter(is_conv) | std::ranges::to<std::vector>())) {
+      throw std::meta::exception{"Traits must not have any conversion functions", trait};
+   }
+
+   constexpr auto is_declared_op = [](auto x) {
+      return std::meta::is_user_declared(x)
+          && (std::meta::is_operator_function(x) || std::meta::is_operator_function_template(x));
+   };
+   if (!std::empty(funcs | std::views::filter(is_declared_op) | std::ranges::to<std::vector>())) {
+      throw std::meta::exception{"Traits must not have any operator functions", trait};
+   }
+
+   if (funcs.empty()) {
+      throw std::meta::exception{"Traits must have at least one function", trait};
+   }
+
+   constexpr auto is_alias = [](auto x) { return std::meta::is_type_alias(x) || std::meta::is_alias_template(x); };
+   if (!std::empty(members | std::views::filter(is_alias) | std::ranges::to<std::vector>())) {
+      throw std::meta::exception{"Traits must not have any type aliases", trait};
+   }
+
+   constexpr auto is_class_or_class_template = [](auto x) {
+      return (std::meta::is_type(x) && std::meta::is_class_type(x)) || std::meta::is_class_template(x);
+   };
+   if (!std::empty(members | std::views::filter(is_class_or_class_template) | std::ranges::to<std::vector>())) {
+      throw std::meta::exception{"Traits must not have any class declarations", trait};
+   }
+
+   const auto marked_trait = !std::meta::annotations_of_with_type(trait, ^^trait_struct).empty();
+   const auto marked_auto_trait = !std::meta::annotations_of_with_type(trait, ^^auto_trait_struct).empty();
+   if ((!marked_trait && !marked_auto_trait) || (marked_trait && marked_auto_trait)) {
+      throw std::meta::exception{"Traits must be annotated with exactly one of khct::trait or khct::auto_trait", trait};
+   }
+
+   return true;
+}
+
+consteval auto is_valid_impl_for(std::meta::info impl, std::meta::info trait) -> bool
+{
+   if (!std::meta::is_complete_type(impl)) {
+      throw std::meta::exception{"Implementations must be complete types", impl};
+   }
+
+   if (!std::meta::is_class_type(impl)) {
+      throw std::meta::exception{"Implementations must be class types", impl};
+   }
+
+   const auto impl_funcs = get_trait_funcs(impl);
+   for (const auto& trait_func : get_trait_funcs(trait)) {
+      if (!get_matching_impl_func(trait_func, impl_funcs)) {
+         throw std::meta::exception{
+            std::string{"Implementation does not have a matching function for trait function: "}
+               + std::meta::display_string_of(trait_func),
+            trait_func};
+      }
+   }
+
+   return true;
+}
+
+} // namespace khct::detail
+
+namespace khct {
+
+inline constexpr detail::trait_struct trait{};
+inline constexpr detail::auto_trait_struct auto_trait{};
+
+template<typename Trait>
+concept valid_trait = detail::is_valid_trait(^^Trait);
+
+namespace detail {
+
+template<typename Trait>
+   requires valid_trait<Trait>
+struct impl_for_struct {};
+
+consteval auto is_marked_impl_for(std::meta::info impl, std::meta::info trait) -> bool
+{
+   return !std::meta::annotations_of_with_type(
+              std::meta::remove_const(impl), std::meta::substitute(^^impl_for_struct, {std::meta::remove_const(trait)}))
+              .empty();
+}
+
+template<typename Trait, bool IsInline>
+struct vtable_holder {
+private:
+   using destructor_t = void (*)(void*);
+
+   std::conditional_t<IsInline, vtable_type<std::remove_const_t<Trait>>, const vtable_type<std::remove_const_t<Trait>>*>
+      vtable_;
+
+public:
+   template<typename U>
+   constexpr explicit vtable_holder(const U*) noexcept : vtable_{vtable_holder::make_vtable<U>()}
+   {}
+
+   vtable_holder() = default;
+   vtable_holder(const vtable_holder&) = default;
+   vtable_holder(vtable_holder&&) = default;
+   vtable_holder& operator=(const vtable_holder&) = default;
+   vtable_holder& operator=(vtable_holder&&) = default;
+
+   constexpr auto get_vtable(this const vtable_holder& self) -> const auto&
+   {
+      if constexpr (IsInline) {
+         return self.vtable_;
+      }
+      else {
+         return *self.vtable_;
+      }
+   }
+
+   constexpr auto get_destructor(this const vtable_holder& self) -> destructor_t
+   { return self.get_vtable().template get<vtable_type<std::remove_const_t<Trait>>::size - 1>(); }
+
+private:
+   template<typename U>
+   static constexpr auto make_vtable() -> decltype(vtable_)
+   {
+      if constexpr (IsInline) {
+         return transform_tuple<vtable_type<Trait>>(detail::make_vtable<^^Trait, ^^U>());
+      }
+      else {
+         return std::define_static_object(transform_tuple<vtable_type<Trait>>(detail::make_vtable<^^Trait, ^^U>()));
+      }
+   }
+};
+
+// Helper concept for non_destructing_storage
+template<typename T>
+concept is_forwarded_noexcept_constructible = noexcept(std::remove_cvref_t<T>(std::declval<T&&>()));
+
+template<std::size_t StackSize, bool AllowDynamicAlloc, bool AllocationIsNoexcept>
+struct non_destructing_storage;
+
+// No local storage but allow dynamic allocation
+template<bool AllocationIsNoexcept>
+struct non_destructing_storage<0, true, AllocationIsNoexcept> {
+   non_destructing_storage() = default;
+   non_destructing_storage(const non_destructing_storage&) = delete;
+   non_destructing_storage& operator=(const non_destructing_storage&) = delete;
+   non_destructing_storage(non_destructing_storage&&) = default;
+   non_destructing_storage& operator=(non_destructing_storage&&) = default;
+
+   template<typename T>
+      requires(!std::same_as<T, non_destructing_storage>)
+   explicit constexpr non_destructing_storage(T&& arg) noexcept(
+      AllocationIsNoexcept && is_forwarded_noexcept_constructible<T>)
+      : data_{std::make_unique<std::byte[]>(sizeof(T))}
+   { new (data_.get()) std::remove_cvref_t<T>(std::forward<T>(arg)); }
+
+   template<typename Self>
+   constexpr auto get(this Self&& self) noexcept
+      -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
+   { return std::forward_like<Self>(reinterpret_cast<void*>(self.data_.get())); }
+
+   constexpr auto empty(this const non_destructing_storage& self) noexcept { return self.data_ == nullptr; }
+
+private:
+   std::unique_ptr<std::byte[]> data_;
+};
+
+// Local storage but no dynamic allocation
+template<std::size_t StackSize, bool AllocationIsNoexcept>
+struct non_destructing_storage<StackSize, false, AllocationIsNoexcept> {
+   non_destructing_storage() = default;
+   non_destructing_storage(const non_destructing_storage&) = delete;
+   non_destructing_storage& operator=(const non_destructing_storage&) = delete;
+
+   // TODO: validate that moving is fine here
+   constexpr non_destructing_storage(non_destructing_storage&& rhs) noexcept
+      : data_{rhs.data_}, has_data_{rhs.has_data_}
+   { rhs.has_data_ = false; }
+
+   constexpr non_destructing_storage& operator=(non_destructing_storage&& rhs) noexcept
+   {
+      data_ = rhs.data_;
+      has_data_ = rhs.has_data_;
+
+      rhs.has_data_ = false;
+
+      return *this;
+   }
+
+   template<typename T>
+      requires(!std::same_as<T, non_destructing_storage>)
+   explicit constexpr non_destructing_storage(T&& arg) noexcept(is_forwarded_noexcept_constructible<T>)
+      : has_data_{true}
+   { new (data_.data()) std::remove_cvref_t<T>(std::forward<T>(arg)); }
+
+   template<typename Self>
+   constexpr auto get(this Self&& self) noexcept
+      -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
+   { return std::forward_like<Self>(reinterpret_cast<void*>(self.data_.data())); }
+
+   auto empty(this const non_destructing_storage& self) noexcept { return self.has_data_; }
+
+private:
+   std::array<std::byte, StackSize> data_;
+   bool has_data_ = false;
+};
+
+// Local storage and dynamic allocation
+template<std::size_t StackSize, bool AllocationIsNoexcept>
+struct non_destructing_storage<StackSize, true, AllocationIsNoexcept> {
+   non_destructing_storage() = default;
+   non_destructing_storage(const non_destructing_storage&) = delete;
+   non_destructing_storage& operator=(const non_destructing_storage&) = delete;
+
+   constexpr non_destructing_storage(non_destructing_storage&& rhs) noexcept
+      : data_{rhs.data_}, memory_status_{rhs.memory_status_}
+   { rhs.memory_status_ = memory_status_enum::empty; }
+
+   constexpr non_destructing_storage& operator=(non_destructing_storage&& rhs) noexcept
+   {
+      data_ = rhs.data_;
+      memory_status_ = rhs.memory_status_;
+
+      rhs.memory_status_ = memory_status_enum::empty;
+
+      return *this;
+   }
+
+   template<typename T>
+      requires(!std::same_as<T, non_destructing_storage>)
+   constexpr explicit non_destructing_storage(T&& arg) noexcept(
+      is_forwarded_noexcept_constructible<T> && (sizeof(T) <= true_stack_size || AllocationIsNoexcept))
+   {
+      if constexpr (sizeof(T) <= true_stack_size) {
+         memory_status_ = memory_status_enum::stack_allocated;
+         new (data_.data()) std::remove_cvref_t<T>(std::forward<T>(arg));
+      }
+      else {
+         memory_status_ = memory_status_enum::dynamically_allocated;
+         std::construct_at(data_.data(), stack_ptr{std::forward<T>(arg)});
+      }
+   }
+
+   template<typename Self>
+   constexpr auto get(this Self&& self) noexcept
+      -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
+   {
+      using void_ptr = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>;
+      using stack_ptr
+         = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const stack_ptr*, stack_ptr*>;
+      if (self.memory_status_ == memory_status_enum::stack_allocated) {
+         return reinterpret_cast<void_ptr>(self.data_.data());
+      }
+      return std::launder(reinterpret_cast<stack_ptr>(self.data_.data()))->get();
+   }
+
+   constexpr auto empty(this const non_destructing_storage& self) noexcept
+   { return self.memory_status_ == memory_status_enum::empty; }
+
+private:
+   using stack_ptr = non_destructing_storage<0, true, AllocationIsNoexcept>;
+   static constexpr auto true_stack_size = std::max(sizeof(stack_ptr), StackSize);
+
+   enum struct memory_status_enum : std::uint8_t {
+      empty,
+      dynamically_allocated,
+      stack_allocated
+   };
+
+   std::array<std::byte, true_stack_size> data_;
+   memory_status_enum memory_status_ = memory_status_enum::empty;
+};
 
 } // namespace detail
 
-template<typename T>
-inline constexpr auto default_non_owning_opt_for
-   = non_owning_dyn_options{.store_vtable_inline = detail::get_sorted_funcs_by_name(^^T).size() <= 1};
+template<typename Trait>
+concept is_auto_trait
+   = valid_trait<Trait>
+  && !std::meta::annotations_of_with_type(std::meta::dealias(^^std::remove_const_t<Trait>), ^^detail::auto_trait_struct)
+         .empty();
+
+template<typename Impl, typename Trait>
+concept is_impl_for = valid_trait<Trait> && (is_auto_trait<Trait> || detail::is_marked_impl_for(^^Impl, ^^Trait))
+                   && detail::is_valid_impl_for(^^Impl, ^^Trait);
 
 template<typename T>
-inline constexpr auto default_owning_opt_for = owning_dyn_options{.store_vtable_inline = false, .stack_size = 0};
+   requires valid_trait<T>
+inline constexpr auto impl_for = detail::impl_for_struct<T>{};
 
-template<typename Trait, non_owning_dyn_options Opt = default_non_owning_opt_for<Trait>>
-struct non_owning_dyn_trait : detail::non_owning_dyn_trait_impl<std::remove_const_t<Trait>> {
-   template<typename TraitClass, auto... Rest>
-   friend struct detail::func_caller;
+struct non_owning_options {
+   bool store_vtable_inline = false;
+};
 
-   template<bool InlineVtable, typename Class, std::size_t I>
-   friend constexpr auto detail::get_vtable(auto* c) noexcept -> auto&;
+struct owning_options {
+   bool store_vtable_inline = false;
+   std::size_t impl_storage_size = 0;
+   bool allow_dynamic_allocs = true;
+   bool allocation_is_noexcept = false;
+};
 
-   non_owning_dyn_trait() = delete;
-   non_owning_dyn_trait(const non_owning_dyn_trait&) = default;
-   non_owning_dyn_trait(non_owning_dyn_trait&&) = default;
-   non_owning_dyn_trait& operator=(const non_owning_dyn_trait&) = default;
-   non_owning_dyn_trait& operator=(non_owning_dyn_trait&&) = default;
+template<valid_trait, non_owning_options>
+struct dyn;
 
-   template<typename ToStore>
-      requires(std::is_const_v<Trait> && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
-   explicit constexpr non_owning_dyn_trait(const ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
-   {}
+template<valid_trait Trait, owning_options Opt>
+   requires(!std::is_const_v<Trait>) && (Opt.impl_storage_size > 0 || Opt.allow_dynamic_allocs)
+struct owning_dyn;
 
-   template<typename ToStore>
-      requires(!std::is_const_v<Trait> && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, ToStore>))
-   explicit constexpr non_owning_dyn_trait(ToStore* ptr) noexcept : data_{ptr}, funcs_{gen_funcs<ToStore>()}
-   {}
+namespace detail {
 
-   template<auto... FuncCallerRest, typename... T>
-   constexpr auto
-      call(detail::func_caller<std::remove_const_t<Trait>, FuncCallerRest...> to_call, T&&... args) noexcept(
-         noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-            this, std::forward<T>(args)...))) -> decltype(auto)
+struct caller_struct {
+   // TODO: These don't produce very good error messages
+   //       Write own checker and throw better ones?
+   template<valid_trait Trait, owning_options Opt, auto... CallerValues, typename DynTrait, typename... Args>
+      requires std::invocable<
+                  decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
+                  Args...>
+            && std::same_as<std::remove_cvref_t<DynTrait>, owning_dyn<Trait, Opt>>
+   KHCT_DYN_ALWAYS_INLINE constexpr auto static
+      operator()(private_base_caller<CallerValues...>, DynTrait&& trait, Args&&... args) noexcept(
+         std::is_nothrow_invocable_v<
+            decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
+            Args...>) -> decltype(auto)
    {
-      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...);
+      return base_caller<CallerValues...>::call_with_vtable_and_ptr(
+         trait.vtable_.get_vtable(), std::forward_like<DynTrait>(trait.data()), std::forward<Args>(args)...);
    }
 
-   template<auto... FuncCallerRest, typename... T>
-   constexpr auto call(detail::func_caller<std::remove_const_t<Trait>, FuncCallerRest...> to_call, T&&... args) const
-      noexcept(noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...))) -> decltype(auto)
+   template<valid_trait Trait, non_owning_options Opt, auto... CallerValues, typename DynTrait, typename... Args>
+      requires std::invocable<
+                  decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
+                  Args...>
+            && std::same_as<std::remove_cvref_t<DynTrait>, dyn<Trait, Opt>>
+   KHCT_DYN_ALWAYS_INLINE constexpr auto static
+      operator()(private_base_caller<CallerValues...>, DynTrait&& trait, Args&&... args) noexcept(
+         std::is_nothrow_invocable_v<
+            decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
+            Args...>) -> decltype(auto)
    {
-      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...);
+      return base_caller<CallerValues...>::call_with_vtable_and_ptr(
+         trait.vtable_.get_vtable(), std::forward_like<DynTrait>(trait.data_), std::forward<Args>(args)...);
+   }
+};
+
+} // namespace detail
+
+inline constexpr auto call = detail::caller_struct{};
+
+template<valid_trait Trait, owning_options Opt = {}>
+   requires(!std::is_const_v<Trait>) && (Opt.impl_storage_size > 0 || Opt.allow_dynamic_allocs)
+struct owning_dyn : detail::caller_holder_generate<Trait>::type {
+   // owning_dyn() = default;
+
+   // no copying allowed
+   owning_dyn(const owning_dyn&) = delete;
+   owning_dyn& operator=(const owning_dyn&) = delete;
+
+   // Moving is fine; TODO: verify
+   owning_dyn(owning_dyn&&) = default;
+   owning_dyn& operator=(owning_dyn&&) = default;
+
+   template<typename U>
+      requires is_impl_for<std::remove_cvref_t<U>, Trait>
+   constexpr owning_dyn(U&& data) noexcept
+      : vtable_{static_cast<std::remove_reference_t<U>*>(nullptr)}, data_{std::forward<U>(data)}
+   {}
+
+   template<typename Self, typename Caller, typename... Args>
+   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this Self&& self, Caller to_call, Args&&... args) noexcept(
+      noexcept(khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...)))
+      -> decltype(auto)
+   { return khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...); }
+
+   ~owning_dyn()
+   {
+      if (!data_.empty()) {
+         vtable_.get_destructor()(data());
+      }
    }
 
 private:
-   using base = detail::non_owning_dyn_trait_impl<Trait>;
+   detail::vtable_holder<Trait, Opt.store_vtable_inline> vtable_;
+   detail::non_destructing_storage<Opt.impl_storage_size, Opt.allow_dynamic_allocs, Opt.allocation_is_noexcept> data_;
 
-   using tuple_func_ptrs
-      = [:std::meta::substitute(^^detail::tuple, detail::get_members_and_tuple_type(^^Trait, false).second):];
+   constexpr auto data() noexcept -> void* { return data_.get(); }
+   constexpr auto data() const noexcept -> const void* { return data_.get(); }
 
-   std::conditional_t<std::is_const_v<Trait>, const void*, void*> data_;
-   std::conditional_t<Opt.store_vtable_inline, tuple_func_ptrs, std::add_pointer_t<std::add_const_t<tuple_func_ptrs>>>
-      funcs_;
+   friend detail::caller_struct;
+};
 
-   // clang-format off
-   constexpr auto data() noexcept -> void*
+template<valid_trait Trait, non_owning_options Opt = {}>
+struct dyn : detail::caller_holder_generate<Trait>::type {
+   dyn() = delete;
+   dyn(const dyn&) = default;
+   dyn(dyn&&) = default;
+   dyn& operator=(const dyn&) = default;
+   dyn& operator=(dyn&&) = default;
+
+   template<is_impl_for<Trait> U>
       requires(!std::is_const_v<Trait>)
-   {
-      return this->data_;
-   }
+   constexpr dyn(U* data) noexcept : vtable_{static_cast<U*>(nullptr)}, data_{data}
+   {}
 
-   constexpr auto data() const noexcept -> const void*
-   {
-      return this->data_;
-   }
-   // clang-format on
+   template<is_impl_for<Trait> U>
+   constexpr dyn(const U* data) noexcept : vtable_{static_cast<const U*>(nullptr)}, data_{data}
+   {}
 
-   template<typename ToStore>
-   static constexpr auto gen_funcs() noexcept -> auto
-   {
-      if constexpr (Opt.store_vtable_inline) {
-         return detail::make_dyn_trait_pointers<std::remove_const_t<Trait>, ToStore, false>();
-      }
-      else {
-         return std::define_static_object(
-            detail::make_dyn_trait_pointers<std::remove_const_t<Trait>, ToStore, false>());
-      }
-   };
-};
+   template<typename Caller, typename... Args>
+      requires(!std::is_const_v<Trait>)
+   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this dyn& self, Caller to_call, Args&&... args) noexcept(
+      noexcept(khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...))) -> decltype(auto)
+   { return khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...); }
 
-template<typename Trait, owning_dyn_options Opt = default_owning_opt_for<Trait>>
-struct owning_dyn_trait : detail::owning_dyn_trait_impl<Trait, Opt> {
-   template<typename TraitClass, auto... Rest>
-   friend struct detail::func_caller;
-
-   template<bool InlineVtable, typename Class, std::size_t I>
-   friend constexpr auto detail::get_vtable(auto* c) noexcept -> auto&;
-
-   owning_dyn_trait() = delete;
-   // Disallow copying (for now?)
-   owning_dyn_trait(const owning_dyn_trait&) = delete;
-   owning_dyn_trait& operator=(const owning_dyn_trait&) = delete;
-
-   // Allow moving for heap allocated data
-   owning_dyn_trait(owning_dyn_trait&&)
-      requires(Opt.stack_size == 0)
-   = default;
-   owning_dyn_trait& operator=(owning_dyn_trait&&)
-      requires(Opt.stack_size == 0)
-   = default;
-
-   // Disable moving for stack allocated things
-   owning_dyn_trait(owning_dyn_trait&&)
-      requires(Opt.stack_size > 0)
-   = delete;
-   owning_dyn_trait& operator=(owning_dyn_trait&&)
-      requires(Opt.stack_size > 0)
-   = delete;
-
-   // TODO: Add a "alloc never throws" option
-   template<typename ToStore>
-      requires((sizeof(ToStore) <= Opt.stack_size || Opt.stack_size == 0)
-               && (detail::is_auto_trait<Trait> || detail::is_trait_impl_for<Trait, std::remove_reference_t<ToStore>>))
-   explicit constexpr owning_dyn_trait(ToStore&& obj) noexcept(
-      Opt.stack_size == 0 && noexcept(new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)}))
-      : data_{gen_data<ToStore>()}, funcs_{gen_funcs<std::remove_reference_t<ToStore>>()}
-   { new (data()) std::remove_reference_t<ToStore>{std::forward<ToStore>(obj)}; }
-
-   constexpr ~owning_dyn_trait()
-   {
-      if (data()) {
-         if constexpr (Opt.store_vtable_inline) {
-            this->funcs_.template get<0>()(data());
-         }
-         else {
-            this->funcs_->template get<0>()(data());
-         }
-      }
-   }
-
-   template<auto... FuncCallerRest, typename... T>
-   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) noexcept(
-      noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...))) -> decltype(auto)
-   {
-      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...);
-   }
-
-   template<auto... FuncCallerRest, typename... T>
-   constexpr auto call(detail::func_caller<Trait, FuncCallerRest...> to_call, T&&... args) const
-      noexcept(noexcept(to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...))) -> decltype(auto)
-   {
-      return to_call.template call<Opt.store_vtable_inline, std::remove_reference_t<decltype(*this)>>(
-         this, std::forward<T>(args)...);
-   }
+   template<typename Caller, typename... Args>
+   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this const dyn& self, Caller to_call, Args&&... args) noexcept(
+      noexcept(khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...))) -> decltype(auto)
+   { return khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...); }
 
 private:
-   using base = detail::owning_dyn_trait_impl<Trait, Opt>;
-   using tuple_func_ptrs = detail::append_tuple_types_t<
-      detail::tuple<void (*)(void*) noexcept>,
-      typename[:std::meta::substitute(^^detail::tuple, detail::get_members_and_tuple_type(^^Trait, true).second):]>;
+   detail::vtable_holder<Trait, Opt.store_vtable_inline> vtable_;
+   std::conditional_t<std::is_const_v<Trait>, const void*, void*> data_;
 
-   std::conditional_t<(Opt.stack_size > 0), std::array<unsigned char, Opt.stack_size>, std::unique_ptr<unsigned char[]>>
-      data_;
-   std::conditional_t<Opt.store_vtable_inline, tuple_func_ptrs, std::add_pointer_t<std::add_const_t<tuple_func_ptrs>>>
-      funcs_;
-
-   constexpr auto data() noexcept -> void*
-   {
-      if constexpr (Opt.stack_size > 0) {
-         return this->data_.data();
-      }
-      else {
-         return this->data_.get();
-      }
-   }
-
-   constexpr auto data() const noexcept -> const void*
-   {
-      if constexpr (Opt.stack_size > 0) {
-         return this->data_.data();
-      }
-      else {
-         return this->data_.get();
-      }
-   }
-
-   template<typename ToStore>
-   static constexpr auto gen_data() noexcept -> auto
-   {
-      if constexpr (Opt.stack_size > 0) {
-         return std::array<unsigned char, Opt.stack_size>{};
-      }
-      else {
-         return std::make_unique<unsigned char[]>(sizeof(ToStore));
-      }
-   };
-
-   template<typename ToStore>
-   static constexpr auto gen_funcs() noexcept -> auto
-   {
-      if constexpr (Opt.store_vtable_inline) {
-         return detail::make_dyn_trait_pointers<Trait, ToStore, true>(
-            [](void* const c) noexcept { static_cast<ToStore*>(c)->~ToStore(); });
-      }
-      else {
-         return std::define_static_object(
-            detail::make_dyn_trait_pointers<Trait, ToStore, true>(
-               [](void* const c) noexcept { static_cast<ToStore*>(c)->~ToStore(); }));
-      }
-   };
+   friend detail::caller_struct;
 };
-
-template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_for<DynTrait>, typename ToStore>
-   requires(
-      std::is_const_v<DynTrait> && (detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>))
-[[nodiscard]] constexpr auto dyn(const ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
-{ return non_owning_dyn_trait<DynTrait, Opt>{ptr}; }
-
-template<typename DynTrait, non_owning_dyn_options Opt = default_non_owning_opt_for<DynTrait>, typename ToStore>
-   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, ToStore>)
-[[nodiscard]] constexpr auto dyn(ToStore* ptr) noexcept -> non_owning_dyn_trait<DynTrait, Opt>
-{ return non_owning_dyn_trait<DynTrait, Opt>{ptr}; }
-
-template<typename DynTrait, owning_dyn_options Opt = default_owning_opt_for<DynTrait>, typename ToStore>
-   requires(detail::is_auto_trait<DynTrait> || detail::is_trait_impl_for<DynTrait, std::remove_reference_t<ToStore>>)
-[[nodiscard]] constexpr auto
-   owning_dyn(ToStore&& to_store) noexcept(noexcept(owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}))
-      -> owning_dyn_trait<DynTrait, Opt>
-{ return owning_dyn_trait<DynTrait, Opt>{std::forward<ToStore>(to_store)}; }
 
 } // namespace khct
+
+#undef KHCT_DYN_ALWAYS_INLINE
 
 #endif // KHCT_CPP_DYN_HPP

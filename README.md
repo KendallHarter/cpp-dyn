@@ -45,7 +45,7 @@ private:
 };
 
 // Using that interface
-int take_interface(khct::non_owning_dyn_trait<my_interface> obj) noexcept
+int take_interface(khct::dyn<my_interface> obj) noexcept
 {
    obj.call(obj.set_data, 20);
    return obj.call(obj.get_data);
@@ -61,8 +61,6 @@ int main()
 See [here](docs/details.md) for more detailed usage.
 
 ## Limitations
-
-Explicit this parameters are not supported.
 
 Compilation errors are a nightmare.
 

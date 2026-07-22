@@ -5,10 +5,10 @@
 
 struct[[= khct::auto_trait]] noise_trait {
    static std::string_view get_noise() noexcept;
-   static constexpr std::string_view get_secondary_noise() noexcept;
-   constexpr int volume() const noexcept;
-   constexpr int volume(int) const noexcept;
-   constexpr void get_louder();
+   static std::string_view get_secondary_noise() noexcept;
+   int volume() const noexcept;
+   int volume(int) const noexcept;
+   void get_louder();
 };
 
 struct cow {
