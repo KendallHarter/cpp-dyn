@@ -4,18 +4,19 @@ There are two different primary dyn trait structs, owning and non-owning:
 ```cpp
 template<
    typename Trait,
-   non_owning_dyn_options Opt = {}>
+   khct::non_owning_options Opt = {}>
 struct khct::dyn;
 
 template<
    typename Trait,
-   owning_dyn_options Opt = {}>
+   khct::owning_options Opt = {}>
 struct khct::owning_dyn;
 ```
 
-The `non_owning_dyn_options` and `owning_dyn_options` are described [here](#dyn-trait-struct-options).
+The `non_owning_options` and `owning_options` structs are described [here](#dyn-trait-struct-options).
 
-These are used as such (assuming `my_trait` is a trait and `my_obj` is a value that conforms to it):
+`dyn` and `owning_dyn` are used as such 
+(assuming `my_trait` is a trait and `my_obj` is a value that conforms to it):
 
 ```cpp
 // Create a non-owning trait
