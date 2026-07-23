@@ -14,7 +14,9 @@ add_library(cpp_dyn INTERFACE)
 
 # Add -freflection if GCC
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-   target_compile_options(cpp_dyn INTERFACE "-freflection")
+   # There's an error with the module linking without the -fabi-version=20 flag
+   # The error says something about using -fabi-version=0 but that doesn't work
+   target_compile_options(cpp_dyn INTERFACE -freflection -fabi-version=20)
 endif()
 
 target_include_directories(cpp_dyn INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
