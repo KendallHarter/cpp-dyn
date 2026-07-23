@@ -38,6 +38,7 @@ if("${KHCT_CPP_DYN_ENABLE_MODULE}")
 endif()
 
 if("${KHCT_CPP_DYN_BUILD_TESTS}")
+   include(CTest)
    include(FetchContent)
 
    FetchContent_Declare(
@@ -50,13 +51,16 @@ if("${KHCT_CPP_DYN_BUILD_TESTS}")
 
    add_executable(basic_tests "tests/basic_tests.cpp")
    target_link_libraries(basic_tests PRIVATE khct::cpp_dyn Catch2::Catch2WithMain)
+   add_test(NAME basic_tests COMMAND basic_tests)
 
    add_executable(compile_time_tests "tests/compile_time_tests.cpp")
    target_link_libraries(compile_time_tests PRIVATE khct::cpp_dyn)
+   add_test(NAME compile_time_tests COMMAND compile_time_tests)
 
    if("${KHCT_CPP_DYN_ENABLE_MODULE}")
       add_executable(module_test "tests/test_module.cpp")
       target_link_libraries(module_test PRIVATE khct::cpp_dyn::cpp_dyn_module Catch2::Catch2WithMain)
+      add_test(NAME module_test COMMAND module_test)
    endif()
 endif()
 

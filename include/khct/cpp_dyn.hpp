@@ -3,6 +3,7 @@
 //    - Add an annotation that allows configuring the above
 //    - Allow each function to override the interface-wide setting
 //    - Add copying to owning dyn interface (with vtable entry)
+//    - Better handling of alignment
 
 #ifndef KHCT_CPP_DYN_HPP
 #define KHCT_CPP_DYN_HPP
@@ -11,7 +12,6 @@
 #include <concepts>
 #include <cstdint>
 #include <flat_map>
-#include <flat_set>
 #include <functional>
 #include <memory>
 #include <meta>
@@ -750,6 +750,8 @@ struct owning_dyn : detail::caller_holder_generate<Trait>::type {
       noexcept(khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...)))
       -> decltype(auto)
    { return khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...); }
+
+   constexpr auto empty(this const owning_dyn& self) noexcept -> bool { return self.data_.empty(); }
 
    ~owning_dyn()
    {
