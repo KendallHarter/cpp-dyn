@@ -217,7 +217,7 @@ using vtable_type = decltype(make_vtable<^^T, ^^T>());
 
 template<std::meta::info Trait, std::size_t Index, typename RetType, typename SelfPtr, typename... Args>
 struct base_caller_single_func {
-   KHCT_DYN_ALWAYS_INLINE static constexpr auto
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE static constexpr auto
       call_with_vtable_and_ptr(const vtable_type<typename[:Trait:]>& vtable, SelfPtr ptr, Args&&... args) noexcept(
          noexcept(vtable.template get<Index>()(ptr, std::forward<Args>(args)...))) -> RetType
    { return vtable.template get<Index>()(ptr, std::forward<Args>(args)...); }
