@@ -50,7 +50,7 @@ public:
 
    template<std::size_t I>
       requires(I < sizeof...(Ts))
-   constexpr auto get() const noexcept -> const auto&
+   [[nodiscard]] constexpr auto get() const noexcept -> const auto&
    { return data_.[:impl_members[I]:]; }
 
    static constexpr auto size = sizeof...(Ts);
@@ -59,7 +59,7 @@ public:
 };
 
 template<typename TupleTypeTo, typename TupleTypeFrom>
-constexpr TupleTypeTo transform_tuple(const TupleTypeFrom& from) noexcept
+[[nodiscard]] constexpr TupleTypeTo transform_tuple(const TupleTypeFrom& from) noexcept
 {
    static constexpr auto impl = []<typename... Ts, typename... Us>(const tuple<Us...>& from, tuple<Ts...>*) noexcept {
       return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
@@ -85,7 +85,7 @@ template<typename T>
 constexpr auto vtable_deleter_for
    = +[](void* ptr) noexcept(noexcept(static_cast<T*>(ptr)->~T())) { static_cast<T*>(ptr)->~T(); };
 
-consteval auto get_trait_funcs(std::meta::info c) -> std::vector<std::meta::info>
+[[nodiscard]] consteval auto get_trait_funcs(std::meta::info c) -> std::vector<std::meta::info>
 {
    auto non_cv_c = std::meta::remove_const(std::meta::remove_volatile(c));
    auto f = std::meta::members_of(non_cv_c, std::meta::access_context::current())
@@ -97,7 +97,7 @@ consteval auto get_trait_funcs(std::meta::info c) -> std::vector<std::meta::info
    return f;
 }
 
-consteval auto is_static_or_const_qualified_function(std::meta::info func) -> bool
+[[nodiscard]] consteval auto is_static_or_const_qualified_function(std::meta::info func) -> bool
 {
    if (std::meta::is_static_member(func)) {
       return true;
@@ -112,7 +112,7 @@ consteval auto is_static_or_const_qualified_function(std::meta::info func) -> bo
    return std::meta::is_const(func);
 }
 
-consteval auto params_without_explicit_this(std::meta::info func) -> std::vector<std::meta::info>
+[[nodiscard]] consteval auto params_without_explicit_this(std::meta::info func) -> std::vector<std::meta::info>
 {
    const auto params = std::meta::parameters_of(func);
    if (!params.empty()) {
@@ -123,7 +123,7 @@ consteval auto params_without_explicit_this(std::meta::info func) -> std::vector
    return params;
 }
 
-consteval auto make_vtable_entry(std::meta::info impl_func) -> std::meta::info
+[[nodiscard]] consteval auto make_vtable_entry(std::meta::info impl_func) -> std::meta::info
 {
    const auto impl_args = std::meta::parameters_of(impl_func);
 
@@ -166,8 +166,9 @@ consteval auto make_vtable_entry(std::meta::info impl_func) -> std::meta::info
          impl_args | std::views::transform(std::meta::type_of)));
 }
 
-consteval auto get_matching_impl_func(std::meta::info trait_func, const std::span<const std::meta::info> impl_funcs)
-   -> std::optional<std::meta::info>
+[[nodiscard]] consteval auto
+   get_matching_impl_func(std::meta::info trait_func, const std::span<const std::meta::info> impl_funcs)
+      -> std::optional<std::meta::info>
 {
    const auto iter = std::ranges::find_if(impl_funcs, [&](auto x) {
       return std::meta::identifier_of(x) == std::meta::identifier_of(trait_func)
@@ -185,7 +186,7 @@ consteval auto get_matching_impl_func(std::meta::info trait_func, const std::spa
 }
 
 template<std::meta::info Trait, std::meta::info ImplementingClass>
-consteval auto make_vtable() -> auto
+[[nodiscard]] consteval auto make_vtable() -> auto
 {
    static constexpr auto trait_funcs = std::define_static_array(get_trait_funcs(Trait));
    static constexpr auto impl_funcs = std::define_static_array(get_trait_funcs(ImplementingClass));
@@ -202,7 +203,7 @@ consteval auto make_vtable() -> auto
 template<typename T>
 using vtable_type = decltype(make_vtable<^^T, ^^T>());
 
-consteval auto partition_functions_by_name(std::meta::info cls)
+[[nodiscard]] consteval auto partition_functions_by_name(std::meta::info cls)
    -> std::flat_map<std::string_view, std::vector<std::meta::info>>
 {
    std::flat_map<std::string_view, std::vector<std::meta::info>> to_ret;
@@ -314,7 +315,7 @@ struct trait_struct {};
 struct auto_trait_struct {};
 
 // TODO: Add display_string_of to show violating function
-consteval auto is_valid_trait(std::meta::info raw_trait) -> bool
+[[nodiscard]] consteval auto is_valid_trait(std::meta::info raw_trait) -> bool
 {
    const auto trait = std::meta::remove_const(raw_trait);
 
@@ -421,7 +422,7 @@ consteval auto is_valid_trait(std::meta::info raw_trait) -> bool
    return true;
 }
 
-consteval auto is_valid_impl_for(std::meta::info impl, std::meta::info trait) -> bool
+[[nodiscard]] consteval auto is_valid_impl_for(std::meta::info impl, std::meta::info trait) -> bool
 {
    if (!std::meta::is_complete_type(impl)) {
       throw std::meta::exception{"Implementations must be complete types", impl};
@@ -460,7 +461,7 @@ template<typename Trait>
    requires valid_trait<Trait>
 struct impl_for_struct {};
 
-consteval auto is_marked_impl_for(std::meta::info impl, std::meta::info trait) -> bool
+[[nodiscard]] consteval auto is_marked_impl_for(std::meta::info impl, std::meta::info trait) -> bool
 {
    return !std::meta::annotations_of_with_type(
               std::meta::remove_const(impl), std::meta::substitute(^^impl_for_struct, {std::meta::remove_const(trait)}))
@@ -486,7 +487,7 @@ public:
    vtable_holder& operator=(const vtable_holder&) = default;
    vtable_holder& operator=(vtable_holder&&) = default;
 
-   constexpr auto get_vtable(this const vtable_holder& self) -> const auto&
+   [[nodiscard]] constexpr auto get_vtable(this const vtable_holder& self) -> const auto&
    {
       if constexpr (IsInline) {
          return self.vtable_;
@@ -496,12 +497,12 @@ public:
       }
    }
 
-   constexpr auto get_destructor(this const vtable_holder& self) -> destructor_t
+   [[nodiscard]] constexpr auto get_destructor(this const vtable_holder& self) -> destructor_t
    { return self.get_vtable().template get<vtable_type<std::remove_const_t<Trait>>::size - 1>(); }
 
 private:
    template<typename U>
-   static constexpr auto make_vtable() -> decltype(vtable_)
+   [[nodiscard]] static constexpr auto make_vtable() -> decltype(vtable_)
    {
       if constexpr (IsInline) {
          return transform_tuple<vtable_type<Trait>>(detail::make_vtable<^^Trait, ^^U>());
@@ -540,7 +541,8 @@ struct non_destructing_storage<0, true, AllocationIsNoexcept> {
       -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
    { return std::forward_like<Self>(reinterpret_cast<void*>(self.data_.get())); }
 
-   constexpr auto empty(this const non_destructing_storage& self) noexcept { return self.data_ == nullptr; }
+   [[nodiscard]] constexpr auto empty(this const non_destructing_storage& self) noexcept
+   { return self.data_ == nullptr; }
 
 private:
    std::unique_ptr<std::byte[]> data_;
@@ -575,11 +577,11 @@ struct non_destructing_storage<StackSize, false, AllocationIsNoexcept> {
    { new (data_.data()) std::remove_cvref_t<T>(std::forward<T>(arg)); }
 
    template<typename Self>
-   constexpr auto get(this Self&& self) noexcept
+   [[nodiscard]] constexpr auto get(this Self&& self) noexcept
       -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
    { return std::forward_like<Self>(reinterpret_cast<void*>(self.data_.data())); }
 
-   auto empty(this const non_destructing_storage& self) noexcept { return self.has_data_; }
+   [[nodiscard]] auto empty(this const non_destructing_storage& self) noexcept { return self.has_data_; }
 
 private:
    std::array<std::byte, StackSize> data_;
@@ -623,7 +625,7 @@ struct non_destructing_storage<StackSize, true, AllocationIsNoexcept> {
    }
 
    template<typename Self>
-   constexpr auto get(this Self&& self) noexcept
+   [[nodiscard]] constexpr auto get(this Self&& self) noexcept
       -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>
    {
       using void_ptr = std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, const void*, void*>;
@@ -635,7 +637,7 @@ struct non_destructing_storage<StackSize, true, AllocationIsNoexcept> {
       return std::launder(reinterpret_cast<stack_ptr>(self.data_.data()))->get();
    }
 
-   constexpr auto empty(this const non_destructing_storage& self) noexcept
+   [[nodiscard]] constexpr auto empty(this const non_destructing_storage& self) noexcept
    { return self.memory_status_ == memory_status_enum::empty; }
 
 private:
@@ -696,7 +698,7 @@ struct caller_struct {
                   decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
                   Args...>
             && std::same_as<std::remove_cvref_t<DynTrait>, owning_dyn<Trait, Opt>>
-   KHCT_DYN_ALWAYS_INLINE constexpr auto static
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE constexpr auto static
       operator()(private_base_caller<CallerValues...>, DynTrait&& trait, Args&&... args) noexcept(
          std::is_nothrow_invocable_v<
             decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
@@ -711,7 +713,7 @@ struct caller_struct {
                   decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
                   Args...>
             && std::same_as<std::remove_cvref_t<DynTrait>, dyn<Trait, Opt>>
-   KHCT_DYN_ALWAYS_INLINE constexpr auto static
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE constexpr auto static
       operator()(private_base_caller<CallerValues...>, DynTrait&& trait, Args&&... args) noexcept(
          std::is_nothrow_invocable_v<
             decltype(std::forward_like<DynTrait>(std::declval<base_caller<CallerValues...>>())),
@@ -741,17 +743,17 @@ struct owning_dyn : detail::caller_holder_generate<Trait>::type {
 
    template<typename U>
       requires is_impl_for<std::remove_cvref_t<U>, Trait>
-   constexpr owning_dyn(U&& data) noexcept
+   constexpr explicit(false) owning_dyn(U&& data) noexcept
       : vtable_{static_cast<std::remove_reference_t<U>*>(nullptr)}, data_{std::forward<U>(data)}
    {}
 
    template<typename Self, typename Caller, typename... Args>
-   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this Self&& self, Caller to_call, Args&&... args) noexcept(
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE constexpr auto call(this Self&& self, Caller to_call, Args&&... args) noexcept(
       noexcept(khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...)))
       -> decltype(auto)
    { return khct::call.operator()<Trait, Opt>(to_call, std::forward<Self>(self), std::forward<Args>(args)...); }
 
-   constexpr auto empty(this const owning_dyn& self) noexcept -> bool { return self.data_.empty(); }
+   [[nodiscard]] constexpr auto empty(this const owning_dyn& self) noexcept -> bool { return self.data_.empty(); }
 
    ~owning_dyn()
    {
@@ -764,8 +766,8 @@ private:
    detail::vtable_holder<Trait, Opt.store_vtable_inline> vtable_;
    detail::non_destructing_storage<Opt.impl_storage_size, Opt.allow_dynamic_allocs, Opt.allocation_is_noexcept> data_;
 
-   constexpr auto data() noexcept -> void* { return data_.get(); }
-   constexpr auto data() const noexcept -> const void* { return data_.get(); }
+   [[nodiscard]] constexpr auto data() noexcept -> void* { return data_.get(); }
+   [[nodiscard]] constexpr auto data() const noexcept -> const void* { return data_.get(); }
 
    friend detail::caller_struct;
 };
@@ -780,22 +782,23 @@ struct dyn : detail::caller_holder_generate<Trait>::type {
 
    template<is_impl_for<Trait> U>
       requires(!std::is_const_v<Trait>)
-   constexpr dyn(U* data) noexcept : vtable_{static_cast<U*>(nullptr)}, data_{data}
+   constexpr explicit(false) dyn(U* data) noexcept : vtable_{static_cast<U*>(nullptr)}, data_{data}
    {}
 
    template<is_impl_for<Trait> U>
-   constexpr dyn(const U* data) noexcept : vtable_{static_cast<const U*>(nullptr)}, data_{data}
+   constexpr explicit(false) dyn(const U* data) noexcept : vtable_{static_cast<const U*>(nullptr)}, data_{data}
    {}
 
    template<typename Caller, typename... Args>
       requires(!std::is_const_v<Trait>)
-   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this dyn& self, Caller to_call, Args&&... args) noexcept(
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE constexpr auto call(this dyn& self, Caller to_call, Args&&... args) noexcept(
       noexcept(khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...))) -> decltype(auto)
    { return khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...); }
 
    template<typename Caller, typename... Args>
-   KHCT_DYN_ALWAYS_INLINE constexpr auto call(this const dyn& self, Caller to_call, Args&&... args) noexcept(
-      noexcept(khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...))) -> decltype(auto)
+   [[nodiscard]] KHCT_DYN_ALWAYS_INLINE constexpr auto
+      call(this const dyn& self, Caller to_call, Args&&... args) noexcept(
+         noexcept(khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...))) -> decltype(auto)
    { return khct::call.operator()<Trait, Opt>(to_call, self, std::forward<Args>(args)...); }
 
 private:

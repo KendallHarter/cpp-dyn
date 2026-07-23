@@ -8,7 +8,6 @@
 TEST_CASE("Basic functionality", "[basic]")
 {
    const auto trait = khct::owning_dyn<noise_trait, khct::owning_options{.impl_storage_size = 8}>(cow{});
-   trait.call(trait.volume);
    REQUIRE(trait.call(trait.volume) == 1);
 
    auto trait2 = khct::owning_dyn<noise_trait, khct::owning_options{.store_vtable_inline = true}>(dog{});
