@@ -2,15 +2,13 @@ cmake_minimum_required(VERSION 3.28)
 
 project(cpp_dyn)
 
-set(CMAKE_CXX_STANDARD 26)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 option(KHCT_CPP_DYN_BUILD_TESTS "Build tests for the library" FALSE)
 option(KHCT_CPP_DYN_ENABLE_MODULE "Enable building module files" FALSE)
 option(KHCT_CPP_DYN_BUILD_POC "Build proof of concept demonstrations" FALSE)
 
 add_library(cpp_dyn INTERFACE)
+
+target_compile_features(cpp_dyn INTERFACE cxx_std_26)
 
 # Add -freflection if GCC
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
